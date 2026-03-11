@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	gioui.org v0.9.0
+	github.com/BurntSushi/toml v1.6.0
 	github.com/davenicholson-xyz/go-setwallpaper v0.1.0
 	github.com/davenicholson-xyz/go-wallhaven v0.1.4
 )
