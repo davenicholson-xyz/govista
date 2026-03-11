@@ -71,6 +71,19 @@ type state struct {
 	collLoading    bool
 	collLabel      string // name of the active collection
 
+	// Lightbox.
+	lbOpen    bool
+	lbThumb   *Thumb
+	lbTagIdx  int          // -1 = none selected
+	lbVersion int
+	lbTagList layout.List  // horizontal, render-thread only
+	// Protected by mu:
+	lbDetail *wh.Wallpaper
+	lbImg    image.Image
+	// Render-thread only:
+	lbImgOp  paint.ImageOp
+	lbImgPtr image.Image
+
 	// Keyboard.
 	kt keyTag
 
@@ -92,13 +105,15 @@ func run(w *app.Window) error {
 	}
 
 	s := &state{
-		list:     layout.List{Axis: layout.Vertical},
-		cfg:      cfg,
-		sorting:  sorting,
-		seed:     seed,
-		srchQ:    cfg.Query,
-		selected: -1,
-		theme:    th,
+		list:      layout.List{Axis: layout.Vertical},
+		cfg:       cfg,
+		sorting:   sorting,
+		seed:      seed,
+		srchQ:     cfg.Query,
+		selected:  -1,
+		theme:     th,
+		lbTagList: layout.List{Axis: layout.Horizontal},
+		lbTagIdx:  -1,
 	}
 	s.queryObj = buildQuery(cfg, sorting, cfg.Query, seed)
 
@@ -187,6 +202,9 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 	if s.collectOpen {
 		s.drawCollections(gtx)
 	}
+	if s.lbOpen {
+		s.drawLightbox(gtx)
+	}
 
 	return dims
 }
@@ -243,6 +261,8 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: "/"},
 			// Collections open.
 			key.Filter{Focus: &s.kt, Name: "C", Required: key.ModShift},
+			// Lightbox.
+			key.Filter{Focus: &s.kt, Name: "P"},
 			// Universal actions.
 			key.Filter{Focus: &s.kt, Name: key.NameReturn},
 			key.Filter{Focus: &s.kt, Name: key.NameEscape},
@@ -311,6 +331,52 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				continue
 			}
 
+			if s.lbOpen {
+				switch ev.Name {
+				case "H", key.NameLeftArrow:
+					if s.lbTagIdx > 0 {
+						s.lbTagIdx--
+						s.lbTagList.ScrollTo(s.lbTagIdx)
+					} else if s.lbTagIdx == 0 {
+						s.lbTagIdx = -1
+					}
+				case "L", key.NameRightArrow:
+					s.mu.Lock()
+					nTags := 0
+					if s.lbDetail != nil {
+						nTags = len(s.lbDetail.Tags)
+					}
+					s.mu.Unlock()
+					if s.lbTagIdx < nTags-1 {
+						s.lbTagIdx++
+						s.lbTagList.ScrollTo(s.lbTagIdx)
+					}
+				case key.NameReturn:
+					s.mu.Lock()
+					detail := s.lbDetail
+					s.mu.Unlock()
+					if detail != nil && s.lbTagIdx >= 0 && s.lbTagIdx < len(detail.Tags) {
+						tagName := detail.Tags[s.lbTagIdx].Name
+						s.lbOpen = false
+						s.lbTagIdx = -1
+						s.applySearch("#"+tagName, w)
+					} else if s.lbThumb != nil {
+						t := s.lbThumb
+						s.lbOpen = false
+						id, url, cfg := t.ID, t.FullURL, s.cfg
+						go func() {
+							if err := downloadAndSet(id, url, cfg, w); err != nil {
+								log.Println("govista: set wallpaper:", err)
+							}
+						}()
+					}
+				case "P", key.NameEscape, "Q":
+					s.lbOpen = false
+					s.lbTagIdx = -1
+				}
+				continue
+			}
+
 			// Normal mode.
 			shift := ev.Modifiers.Contain(key.ModShift)
 			switch {
@@ -328,6 +394,13 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				searchJustOpened = true
 			case ev.Name == "C" && shift:
 				s.openCollections(w)
+			case ev.Name == "P":
+				s.mu.Lock()
+				thumbs := s.thumbs
+				s.mu.Unlock()
+				if s.selected >= 0 && s.selected < len(thumbs) {
+					s.openLightbox(thumbs[s.selected], w)
+				}
 			case ev.Name == "Q" || ev.Name == key.NameEscape:
 				w.Perform(system.ActionClose)
 			case ev.Name == key.NameReturn:
@@ -421,6 +494,7 @@ func (s *state) applySorting(sorting string, w *app.Window) {
 	s.seed = seed
 	s.srchQ = s.cfg.Query
 	s.collLabel = ""
+	s.lbOpen = false
 	s.queryObj = buildQuery(s.cfg, sorting, s.cfg.Query, seed)
 	s.thumbs = nil
 	s.page = 0
@@ -438,6 +512,7 @@ func (s *state) applySearch(query string, w *app.Window) {
 	s.seed = ""
 	s.srchQ = query
 	s.collLabel = ""
+	s.lbOpen = false
 	s.queryObj = buildQuery(s.cfg, "relevance", query, "")
 	s.thumbs = nil
 	s.page = 0
