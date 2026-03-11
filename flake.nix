@@ -11,6 +11,26 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in {
+        packages.default = pkgs.buildGoModule {
+          pname = "govista";
+          version = "0.1.0";
+          src = ./.;
+          vendorHash = null;
+          nativeBuildInputs = [ pkgs.pkg-config ];
+          buildInputs = with pkgs; [
+            libGL
+            wayland
+            wayland-protocols
+            libxkbcommon
+            libx11
+            libxcursor
+            libxfixes
+            libxcb
+            vulkan-loader
+          ];
+          CGO_ENABLED = "1";
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             go
