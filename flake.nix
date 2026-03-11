@@ -28,7 +28,7 @@
             libxcb
             vulkan-loader
           ];
-          CGO_ENABLED = "1";
+          env.CGO_ENABLED = "1";
         };
 
         devShells.default = pkgs.mkShell {
