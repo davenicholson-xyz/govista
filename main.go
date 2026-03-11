@@ -589,19 +589,21 @@ func (s *state) drawStatus(gtx layout.Context) {
 	lastPage := s.lastPage
 	s.mu.Unlock()
 
-	label := sortingLabel(sorting)
+	viewLabel := sortingLabel(sorting)
+	viewSuffix := ""
 	switch sorting {
 	case "relevance":
 		if srchQ != "" {
-			label += ": " + srchQ
+			viewSuffix = ": " + srchQ
 		}
 	case "collection":
 		if collLabel != "" {
-			label += ": " + collLabel
+			viewSuffix = ": " + collLabel
 		}
 	}
+	pageLabel := ""
 	if page > 0 {
-		label += fmt.Sprintf(" · %d/%d", page, lastPage)
+		pageLabel = fmt.Sprintf(" · %d/%d", page, lastPage)
 	}
 
 	gtx2 := gtx
@@ -610,9 +612,23 @@ func (s *state) drawStatus(gtx layout.Context) {
 		return layout.UniformInset(unit.Dp(10)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			// Record dims first, then draw background, then replay text on top.
 			macro := op.Record(gtx.Ops)
-			lbl := material.Label(s.theme, unit.Sp(11), label)
-			lbl.Color = color.NRGBA{R: 122, G: 122, B: 122, A: 255}
-			dims := lbl.Layout(gtx)
+			dims := layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					lbl := material.Label(s.theme, unit.Sp(11), viewLabel)
+					lbl.Color = color.NRGBA{R: 230, G: 200, B: 50, A: 255}
+					return lbl.Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					lbl := material.Label(s.theme, unit.Sp(11), viewSuffix)
+					lbl.Color = color.NRGBA{R: 100, G: 200, B: 100, A: 255}
+					return lbl.Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					lbl := material.Label(s.theme, unit.Sp(11), pageLabel)
+					lbl.Color = color.NRGBA{R: 122, G: 122, B: 122, A: 255}
+					return lbl.Layout(gtx)
+				}),
+			)
 			call := macro.Stop()
 
 			pad := gtx.Dp(unit.Dp(6))

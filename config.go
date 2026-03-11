@@ -51,24 +51,34 @@ func loadConfig() Config {
 
 // parseFlags overlays CLI flags on top of the loaded config. Flags take precedence.
 func parseFlags(cfg *Config) {
-	flag.StringVar(&cfg.APIKey, "k", cfg.APIKey, "Wallhaven API key")
-	flag.StringVar(&cfg.APIKey, "api-key", cfg.APIKey, "Wallhaven API key")
-	flag.StringVar(&cfg.Username, "u", cfg.Username, "Wallhaven username")
-	flag.StringVar(&cfg.Username, "username", cfg.Username, "Wallhaven username")
-	flag.StringVar(&cfg.Query, "q", cfg.Query, "Default search query")
-	flag.StringVar(&cfg.Query, "query", cfg.Query, "Default search query")
-	flag.StringVar(&cfg.Categories, "c", cfg.Categories, "Category bitmask (e.g. 111)")
-	flag.StringVar(&cfg.Categories, "categories", cfg.Categories, "Category bitmask (e.g. 111)")
-	flag.StringVar(&cfg.Purity, "p", cfg.Purity, "Purity bitmask (e.g. 100)")
-	flag.StringVar(&cfg.Purity, "purity", cfg.Purity, "Purity bitmask (e.g. 100)")
-	flag.StringVar(&cfg.MinResolution, "r", cfg.MinResolution, "Minimum resolution (e.g. 1920x1080)")
-	flag.StringVar(&cfg.MinResolution, "min-resolution", cfg.MinResolution, "Minimum resolution (e.g. 1920x1080)")
-	flag.BoolVar(&cfg.CloseOnSelect, "x", cfg.CloseOnSelect, "Close window after selecting a wallpaper")
-	flag.BoolVar(&cfg.CloseOnSelect, "close-on-select", cfg.CloseOnSelect, "Close window after selecting a wallpaper")
-	flag.BoolVar(&cfg.Output, "o", cfg.Output, "Print selected wallpaper path to stdout")
-	flag.BoolVar(&cfg.Output, "output", cfg.Output, "Print selected wallpaper path to stdout")
-	flag.StringVar(&cfg.Script, "s", cfg.Script, "Script to run on selected wallpaper (receives filepath as argument)")
-	flag.StringVar(&cfg.Script, "script", cfg.Script, "Script to run on selected wallpaper (receives filepath as argument)")
+	var apiKey, username, query, categories, purity, minRes, script string
+	var closeOnSelect, output bool
+
+	using := func(v string) string {
+		if v != "" {
+			return "using: " + v
+		}
+		return ""
+	}
+
+	flag.StringVar(&apiKey, "k", "", "Wallhaven API key ("+using(cfg.APIKey)+")")
+	flag.StringVar(&apiKey, "api-key", "", "Wallhaven API key ("+using(cfg.APIKey)+")")
+	flag.StringVar(&username, "u", "", "Wallhaven username ("+using(cfg.Username)+")")
+	flag.StringVar(&username, "username", "", "Wallhaven username ("+using(cfg.Username)+")")
+	flag.StringVar(&query, "q", "", "Default search query ("+using(cfg.Query)+")")
+	flag.StringVar(&query, "query", "", "Default search query ("+using(cfg.Query)+")")
+	flag.StringVar(&categories, "c", "", "Category bitmask ("+using(cfg.Categories)+")")
+	flag.StringVar(&categories, "categories", "", "Category bitmask ("+using(cfg.Categories)+")")
+	flag.StringVar(&purity, "p", "", "Purity bitmask ("+using(cfg.Purity)+")")
+	flag.StringVar(&purity, "purity", "", "Purity bitmask ("+using(cfg.Purity)+")")
+	flag.StringVar(&minRes, "r", "", "Minimum resolution e.g. 1920x1080 ("+using(cfg.MinResolution)+")")
+	flag.StringVar(&minRes, "min-resolution", "", "Minimum resolution e.g. 1920x1080 ("+using(cfg.MinResolution)+")")
+	flag.BoolVar(&closeOnSelect, "x", false, "Close window after selecting a wallpaper")
+	flag.BoolVar(&closeOnSelect, "close-on-select", false, "Close window after selecting a wallpaper")
+	flag.BoolVar(&output, "o", false, "Print selected wallpaper path to stdout")
+	flag.BoolVar(&output, "output", false, "Print selected wallpaper path to stdout")
+	flag.StringVar(&script, "s", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
+	flag.StringVar(&script, "script", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
 
 	var hot, top, latest, random bool
 	flag.BoolVar(&hot, "H", false, "Start with Hot sorting")
@@ -81,6 +91,34 @@ func parseFlags(cfg *Config) {
 	flag.BoolVar(&random, "random", false, "Start with Random sorting")
 
 	flag.Parse()
+
+	if apiKey != "" {
+		cfg.APIKey = apiKey
+	}
+	if username != "" {
+		cfg.Username = username
+	}
+	if query != "" {
+		cfg.Query = query
+	}
+	if categories != "" {
+		cfg.Categories = categories
+	}
+	if purity != "" {
+		cfg.Purity = purity
+	}
+	if minRes != "" {
+		cfg.MinResolution = minRes
+	}
+	if script != "" {
+		cfg.Script = script
+	}
+	if closeOnSelect {
+		cfg.CloseOnSelect = true
+	}
+	if output {
+		cfg.Output = true
+	}
 
 	switch {
 	case hot:
