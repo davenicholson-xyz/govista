@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ type Config struct {
 	Script        string `toml:"script"`
 	CloseOnSelect bool   `toml:"close-on-select"`
 	Output        bool   `toml:"output"`
+	ThumbSize     int    `toml:"thumb-size"`
 }
 
 func newDefaultConfig() Config {
@@ -28,6 +30,7 @@ func newDefaultConfig() Config {
 		Categories: "111",
 		Purity:     "100",
 		Sorting:    "date_added",
+		ThumbSize:  200,
 	}
 }
 
@@ -53,6 +56,7 @@ func loadConfig() Config {
 func parseFlags(cfg *Config) {
 	var apiKey, username, query, categories, purity, minRes, script string
 	var closeOnSelect, output bool
+	var thumbSize int
 
 	using := func(v string) string {
 		if v != "" {
@@ -77,6 +81,8 @@ func parseFlags(cfg *Config) {
 	flag.BoolVar(&closeOnSelect, "close-on-select", false, "Close window after selecting a wallpaper")
 	flag.BoolVar(&output, "o", false, "Print selected wallpaper path to stdout")
 	flag.BoolVar(&output, "output", false, "Print selected wallpaper path to stdout")
+	flag.IntVar(&thumbSize, "t", 0, fmt.Sprintf("Thumbnail size in dp (default %d)", cfg.ThumbSize))
+	flag.IntVar(&thumbSize, "thumb-size", 0, fmt.Sprintf("Thumbnail size in dp (default %d)", cfg.ThumbSize))
 	flag.StringVar(&script, "s", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
 	flag.StringVar(&script, "script", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
 
@@ -118,6 +124,9 @@ func parseFlags(cfg *Config) {
 	}
 	if output {
 		cfg.Output = true
+	}
+	if thumbSize > 0 {
+		cfg.ThumbSize = thumbSize
 	}
 
 	switch {

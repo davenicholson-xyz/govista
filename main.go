@@ -140,8 +140,6 @@ func newSeed() string {
 	return string(b)
 }
 
-const maxCellDp = unit.Dp(200)
-
 var accentColor = color.NRGBA{R: 124, G: 106, B: 247, A: 255}
 
 func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
@@ -170,7 +168,7 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 	thumbs := s.thumbs
 	s.mu.Unlock()
 
-	maxCellPx := gtx.Dp(maxCellDp)
+	maxCellPx := gtx.Dp(unit.Dp(s.cfg.ThumbSize))
 	cols := gtx.Constraints.Max.X / maxCellPx
 	if cols < 1 {
 		cols = 1
