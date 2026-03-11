@@ -69,6 +69,7 @@ type state struct {
 	collections    []wh.Collection
 	collSelected   int
 	collLoading    bool
+	collLabel      string // name of the active collection
 
 	// Keyboard.
 	kt keyTag
@@ -419,6 +420,7 @@ func (s *state) applySorting(sorting string, w *app.Window) {
 	s.sorting = sorting
 	s.seed = seed
 	s.srchQ = s.cfg.Query
+	s.collLabel = ""
 	s.queryObj = buildQuery(s.cfg, sorting, s.cfg.Query, seed)
 	s.thumbs = nil
 	s.page = 0
@@ -435,6 +437,7 @@ func (s *state) applySearch(query string, w *app.Window) {
 	s.sorting = "relevance"
 	s.seed = ""
 	s.srchQ = query
+	s.collLabel = ""
 	s.queryObj = buildQuery(s.cfg, "relevance", query, "")
 	s.thumbs = nil
 	s.page = 0
@@ -505,11 +508,23 @@ func sortingLabel(sorting string) string {
 func (s *state) drawStatus(gtx layout.Context) {
 	s.mu.Lock()
 	sorting := s.sorting
+	srchQ := s.srchQ
+	collLabel := s.collLabel
 	page := s.page
 	lastPage := s.lastPage
 	s.mu.Unlock()
 
 	label := sortingLabel(sorting)
+	switch sorting {
+	case "relevance":
+		if srchQ != "" {
+			label += ": " + srchQ
+		}
+	case "collection":
+		if collLabel != "" {
+			label += ": " + collLabel
+		}
+	}
 	if page > 0 {
 		label += fmt.Sprintf(" · %d/%d", page, lastPage)
 	}
@@ -637,6 +652,7 @@ func (s *state) applyCollection(coll wh.Collection, w *app.Window) {
 	s.sorting = "collection"
 	s.seed = ""
 	s.srchQ = ""
+	s.collLabel = coll.Label
 	s.queryObj = buildCollectionQuery(s.cfg, username, coll.ID)
 	s.thumbs = nil
 	s.page = 0
