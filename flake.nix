@@ -15,7 +15,7 @@
           pname = "govista";
           version = "0.1.0";
           src = ./.;
-          vendorHash = null;
+          vendorHash = "sha256-Ohc9irHFLbhYcDS+Gx5bvgqNrW+1uJvcsg9lz/01aD4=";
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = with pkgs; [
             libGL
@@ -27,6 +27,7 @@
             libxfixes
             libxcb
             vulkan-loader
+            vulkan-headers
           ];
           env.CGO_ENABLED = "1";
         };
