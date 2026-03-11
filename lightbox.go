@@ -123,40 +123,25 @@ func (s *state) drawLightbox(gtx layout.Context) {
 	s.drawLightboxInfo(gtx, detail)
 }
 
-// drawLightboxInfo renders the gradient info band over the bottom of the image.
+// drawLightboxInfo renders the info band over the bottom of the image.
 func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 	W := gtx.Constraints.Max.X
 	H := gtx.Constraints.Max.Y
 	pad := gtx.Dp(unit.Dp(24))
 
-	// Simulate a gradient by drawing several bands of increasing opacity
-	// from transparent (top) to dark (bottom).
-	fadeH := gtx.Dp(unit.Dp(80))
-	solidH := gtx.Dp(unit.Dp(160))
-	totalH := fadeH + solidH
-	yTop := H - totalH
+	infoH := gtx.Dp(unit.Dp(180))
+	yTop := H - infoH
 	if yTop < 0 {
 		yTop = 0
 	}
 
-	steps := 8
-	for i := 0; i < steps; i++ {
-		alpha := uint8(float32(i+1) / float32(steps) * 200)
-		y0 := yTop + i*fadeH/steps
-		y1 := yTop + (i+1)*fadeH/steps
-		paint.FillShape(gtx.Ops,
-			color.NRGBA{A: alpha},
-			clip.Rect{Min: image.Pt(0, y0), Max: image.Pt(W, y1)}.Op(),
-		)
-	}
 	paint.FillShape(gtx.Ops,
-		color.NRGBA{A: 200},
-		clip.Rect{Min: image.Pt(0, H-solidH), Max: image.Pt(W, H)}.Op(),
+		color.NRGBA{R: 8, G: 8, B: 8, A: 210},
+		clip.Rect{Min: image.Pt(0, yTop), Max: image.Pt(W, H)}.Op(),
 	)
 
 	if detail == nil {
-		// Show placeholder "Loading…" text.
-		off := op.Offset(image.Pt(pad, H-solidH+gtx.Dp(unit.Dp(12)))).Push(gtx.Ops)
+		off := op.Offset(image.Pt(pad, yTop+gtx.Dp(unit.Dp(12)))).Push(gtx.Ops)
 		lbl := material.Label(s.theme, unit.Sp(13), "Loading…")
 		lbl.Color = color.NRGBA{R: 120, G: 120, B: 120, A: 255}
 		lbl.Layout(gtx)
@@ -164,8 +149,8 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 		return
 	}
 
-	// Content starts near the top of the solid band.
-	y := H - solidH + gtx.Dp(unit.Dp(12))
+	// Content starts near the top of the info band.
+	y := yTop + gtx.Dp(unit.Dp(12))
 	lineGap := gtx.Dp(unit.Dp(8))
 
 	// ── Row 1: resolution + ratio (left)  |  views + favorites (right) ──

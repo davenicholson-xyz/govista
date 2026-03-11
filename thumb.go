@@ -91,6 +91,32 @@ var placeholderColor = color.NRGBA{R: 40, G: 40, B: 40, A: 255}
 func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 	sz := gtx.Constraints.Min // Min == Max from layout.Exact above.
 
+	r := gtx.Dp(unit.Dp(8))
+	outerRR := clip.RRect{Rect: image.Rectangle{Max: sz}, NE: r, NW: r, SE: r, SW: r}
+
+	// Border: fill the outer rounded rect first; content drawn on top (inset)
+	// leaves just the ring visible — both outer and inner edges stay rounded.
+	bw := 0
+	if selected || t.click.Hovered() {
+		bw = gtx.Dp(unit.Dp(3))
+		if selected {
+			paint.FillShape(gtx.Ops, accentColor, outerRR.Op(gtx.Ops))
+		}
+		if t.click.Hovered() {
+			paint.FillShape(gtx.Ops, color.NRGBA{R: 255, G: 255, B: 255, A: 220}, outerRR.Op(gtx.Ops))
+		}
+	}
+
+	// Clip all content to the (possibly inset) inner rounded rect.
+	cr := r - bw
+	if cr < 0 {
+		cr = 0
+	}
+	defer clip.RRect{
+		Rect: image.Rectangle{Min: image.Pt(bw, bw), Max: image.Pt(sz.X-bw, sz.Y-bw)},
+		NE: cr, NW: cr, SE: cr, SW: cr,
+	}.Push(gtx.Ops).Pop()
+
 	// 1. Placeholder background.
 	paint.FillShape(gtx.Ops, placeholderColor, clip.Rect{Max: sz}.Op())
 
@@ -108,12 +134,11 @@ func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 		}
 
 		// 3. Draw the image scaled to cover the cell.
-		wImg := widget.Image{
+		widget.Image{
 			Src:      t.imgOp,
 			Fit:      widget.Cover,
 			Position: layout.Center,
-		}
-		wImg.Layout(gtx)
+		}.Layout(gtx)
 
 		// 4. Fade-in overlay: starts fully opaque and fades to transparent over 300 ms.
 		elapsed := time.Since(loadedAt).Seconds() / 0.3
@@ -125,27 +150,6 @@ func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 			)
 			gtx.Execute(op.InvalidateCmd{})
 		}
-	}
-
-	// 5. Selected border (accent colour, thicker) — drawn before hover so
-	//    hover can overlay it when the user mouses over a selected cell.
-	if selected {
-		b := gtx.Dp(unit.Dp(3))
-		bc := accentColor
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Max: image.Pt(sz.X, b)}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(0, sz.Y-b), Max: sz}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Max: image.Pt(b, sz.Y)}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(sz.X-b, 0), Max: sz}.Op())
-	}
-
-	// 6. Hover border (white, semi-transparent).
-	if t.click.Hovered() {
-		b := gtx.Dp(unit.Dp(3))
-		bc := color.NRGBA{R: 255, G: 255, B: 255, A: 220}
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Max: image.Pt(sz.X, b)}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(0, sz.Y-b), Max: sz}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Max: image.Pt(b, sz.Y)}.Op())
-		paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(sz.X-b, 0), Max: sz}.Op())
 	}
 
 	return layout.Dimensions{Size: sz}
