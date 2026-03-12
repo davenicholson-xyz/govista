@@ -17,6 +17,7 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
+	"gioui.org/widget/material"
 )
 
 // Thumb represents a single wallpaper thumbnail in the grid.
@@ -24,13 +25,15 @@ type Thumb struct {
 	ID       string
 	ThumbURL string
 	FullURL  string
-	cfg      Config // set by loadNextPage so the click handler can use config
+	cfg      Config          // set by loadNextPage so the click handler can use config
+	theme    *material.Theme // set by loadNextPage for spinner rendering
 
 	// Protected by mu; written from loader goroutine, read from render goroutine.
-	mu       sync.Mutex
-	img      image.Image
-	loaded   bool
-	loadedAt time.Time
+	mu          sync.Mutex
+	img         image.Image
+	loaded      bool
+	loadedAt    time.Time
+	downloading bool
 
 	// Render-thread only — no mutex needed.
 	imgOp      paint.ImageOp
@@ -62,17 +65,31 @@ func (t *Thumb) load(w *app.Window) {
 	w.Invalidate()
 }
 
+// startDownload marks the thumb as downloading, kicks off the goroutine to
+// fetch and set the wallpaper, and clears the flag when done.
+func (t *Thumb) startDownload(w *app.Window) {
+	t.mu.Lock()
+	t.downloading = true
+	t.mu.Unlock()
+	w.Invalidate()
+	id, url, cfg := t.ID, t.FullURL, t.cfg
+	go func() {
+		if err := downloadAndSet(id, url, cfg, w); err != nil {
+			log.Println("govista: set wallpaper:", err)
+		}
+		t.mu.Lock()
+		t.downloading = false
+		t.mu.Unlock()
+		w.Invalidate()
+	}()
+}
+
 // layout renders the thumbnail cell, handles clicks, and shows selection state.
 func (t *Thumb) layout(gtx layout.Context, w *app.Window, selected bool) layout.Dimensions {
 	// Clicked must be called BEFORE Layout: Layout drains the gesture event
 	// queue internally, so any Clicked check afterwards always returns false.
 	if t.click.Clicked(gtx) {
-		id, url, cfg := t.ID, t.FullURL, t.cfg
-		go func() {
-			if err := downloadAndSet(id, url, cfg, w); err != nil {
-				log.Println("govista: set wallpaper:", err)
-			}
-		}()
+		t.startDownload(w)
 	}
 
 	// 16:9 cell.
@@ -124,6 +141,7 @@ func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 	loaded := t.loaded
 	img := t.img
 	loadedAt := t.loadedAt
+	downloading := t.downloading
 	t.mu.Unlock()
 
 	if loaded {
@@ -150,6 +168,20 @@ func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 			)
 			gtx.Execute(op.InvalidateCmd{})
 		}
+	}
+
+	// Spinner overlay while the full-res wallpaper is downloading.
+	if downloading && t.theme != nil {
+		paint.FillShape(gtx.Ops, color.NRGBA{A: 120}, clip.Rect{Max: sz}.Op())
+		spinSize := gtx.Dp(unit.Dp(36))
+		off := op.Offset(image.Pt((sz.X-spinSize)/2, (sz.Y-spinSize)/2)).Push(gtx.Ops)
+		spinGtx := gtx
+		spinGtx.Constraints = layout.Exact(image.Pt(spinSize, spinSize))
+		l := material.Loader(t.theme)
+		l.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 220}
+		l.Layout(spinGtx)
+		off.Pop()
+		gtx.Execute(op.InvalidateCmd{})
 	}
 
 	return layout.Dimensions{Size: sz}

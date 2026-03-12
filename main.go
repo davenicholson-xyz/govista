@@ -472,13 +472,7 @@ func (s *state) activateSelected(w *app.Window) {
 	if s.selected < 0 || s.selected >= len(thumbs) {
 		return
 	}
-	t := thumbs[s.selected]
-	id, url, cfg := t.ID, t.FullURL, s.cfg
-	go func() {
-		if err := downloadAndSet(id, url, cfg, w); err != nil {
-			log.Println("govista: set wallpaper:", err)
-		}
-	}()
+	thumbs[s.selected].startDownload(w)
 }
 
 // applySorting resets the gallery with a new sort mode.
@@ -544,8 +538,10 @@ func (s *state) loadNextPage(w *app.Window) {
 		}
 		s.mu.Lock()
 		cfg := s.cfg
+		th := s.theme
 		for _, t := range thumbs {
 			t.cfg = cfg
+			t.theme = th
 		}
 		s.thumbs = append(s.thumbs, thumbs...)
 		s.page = nextPage
