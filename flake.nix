@@ -10,12 +10,14 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        version = "0.1.0";
       in {
         packages.default = pkgs.buildGoModule {
           pname = "govista";
-          version = "0.1.0";
+          inherit version;
           src = ./.;
           vendorHash = "sha256-Ohc9irHFLbhYcDS+Gx5bvgqNrW+1uJvcsg9lz/01aD4=";
+          ldflags = [ "-X main.version=${version}" ];
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = with pkgs; [
             libGL

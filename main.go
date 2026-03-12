@@ -26,6 +26,8 @@ import (
 	"gioui.org/widget/material"
 )
 
+var version = "version"
+
 func main() {
 	go func() {
 		w := new(app.Window)

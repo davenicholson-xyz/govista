@@ -96,7 +96,16 @@ func parseFlags(cfg *Config) {
 	flag.BoolVar(&random, "R", false, "Start with Random sorting")
 	flag.BoolVar(&random, "random", false, "Start with Random sorting")
 
+	var showVersion bool
+	flag.BoolVar(&showVersion, "v", false, "Print version and exit")
+	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	if apiKey != "" {
 		cfg.APIKey = apiKey

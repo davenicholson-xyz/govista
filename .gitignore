@@ -1,3 +1,4 @@
 /.direnv
 /.envrc
 /govista
+/build.sh
