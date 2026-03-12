@@ -80,7 +80,7 @@ type state struct {
 	lbThumb   *Thumb
 	lbTagIdx  int          // -1 = none selected
 	lbVersion int
-	lbTagList layout.List  // horizontal, render-thread only
+	// (tag list removed — tags now wrap to a grid)
 	// Protected by mu:
 	lbDetail *wh.Wallpaper
 	lbImg    image.Image
@@ -116,8 +116,7 @@ func run(w *app.Window) error {
 		srchQ:     cfg.Query,
 		selected:  -1,
 		theme:     th,
-		lbTagList: layout.List{Axis: layout.Horizontal},
-		lbTagIdx:  -1,
+		lbTagIdx: -1,
 	}
 	s.queryObj = buildQuery(cfg, sorting, cfg.Query, seed)
 
@@ -356,7 +355,6 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				case "H", key.NameLeftArrow:
 					if s.lbTagIdx > 0 {
 						s.lbTagIdx--
-						s.lbTagList.ScrollTo(s.lbTagIdx)
 					} else if s.lbTagIdx == 0 {
 						s.lbTagIdx = -1
 					}
@@ -369,7 +367,6 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 					s.mu.Unlock()
 					if s.lbTagIdx < nTags-1 {
 						s.lbTagIdx++
-						s.lbTagList.ScrollTo(s.lbTagIdx)
 					}
 				case key.NameReturn:
 					s.mu.Lock()
