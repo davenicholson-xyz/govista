@@ -389,12 +389,7 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 					} else if s.lbThumb != nil {
 						t := s.lbThumb
 						s.lbOpen = false
-						id, url, cfg := t.ID, t.FullURL, s.cfg
-						go func() {
-							if err := downloadAndSet(id, url, cfg, w); err != nil {
-								log.Println("govista: set wallpaper:", err)
-							}
-						}()
+						t.startDownload(w)
 					}
 				case "O":
 					if s.lbThumb != nil {
