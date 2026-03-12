@@ -7,6 +7,8 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"os/exec"
+	"runtime"
 	"sync"
 
 	wh "github.com/davenicholson-xyz/go-wallhaven/wallhavenapi"
@@ -127,6 +129,22 @@ func run(w *app.Window) error {
 			s.layout(gtx, w)
 			e.Frame(gtx.Ops)
 		}
+	}
+}
+
+// openInBrowser opens the given URL in the system default browser.
+func openInBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Println("govista: open browser:", err)
 	}
 }
 
@@ -261,6 +279,8 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: "C", Required: key.ModShift},
 			// Lightbox.
 			key.Filter{Focus: &s.kt, Name: "P"},
+			// Open in browser.
+			key.Filter{Focus: &s.kt, Name: "O"},
 			// Universal actions.
 			key.Filter{Focus: &s.kt, Name: key.NameReturn},
 			key.Filter{Focus: &s.kt, Name: key.NameEscape},
@@ -368,6 +388,10 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 							}
 						}()
 					}
+				case "O":
+					if s.lbThumb != nil {
+						go openInBrowser("https://wallhaven.cc/w/" + s.lbThumb.ID)
+					}
 				case "P", key.NameEscape, "Q":
 					s.lbOpen = false
 					s.lbTagIdx = -1
@@ -398,6 +422,14 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				s.mu.Unlock()
 				if s.selected >= 0 && s.selected < len(thumbs) {
 					s.openLightbox(thumbs[s.selected], w)
+				}
+			case ev.Name == "O":
+				s.mu.Lock()
+				thumbs := s.thumbs
+				s.mu.Unlock()
+				if s.selected >= 0 && s.selected < len(thumbs) {
+					id := thumbs[s.selected].ID
+					go openInBrowser("https://wallhaven.cc/w/" + id)
 				}
 			case ev.Name == "Q" || ev.Name == key.NameEscape:
 				w.Perform(system.ActionClose)
