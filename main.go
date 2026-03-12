@@ -43,6 +43,11 @@ func main() {
 // keyTag is a zero-size type used as the tag for global keyboard events.
 type keyTag struct{}
 
+// lbChipPos records the layout position of a tag chip in the lightbox.
+type lbChipPos struct {
+	x, y, w int
+}
+
 type state struct {
 	mu      sync.Mutex
 	thumbs  []*Thumb
@@ -76,11 +81,11 @@ type state struct {
 	collLabel      string // name of the active collection
 
 	// Lightbox.
-	lbOpen    bool
-	lbThumb   *Thumb
-	lbTagIdx  int          // -1 = none selected
-	lbVersion int
-	lbTagList layout.List  // horizontal, render-thread only
+	lbOpen      bool
+	lbThumb     *Thumb
+	lbTagIdx    int // -1 = none selected
+	lbVersion   int
+	lbTagChips  []lbChipPos // chip positions from last render, render-thread only
 	// Protected by mu:
 	lbDetail *wh.Wallpaper
 	lbImg    image.Image
@@ -116,8 +121,7 @@ func run(w *app.Window) error {
 		srchQ:     cfg.Query,
 		selected:  -1,
 		theme:     th,
-		lbTagList: layout.List{Axis: layout.Horizontal},
-		lbTagIdx:  -1,
+		lbTagIdx: -1,
 	}
 	s.queryObj = buildQuery(cfg, sorting, cfg.Query, seed)
 
@@ -356,7 +360,6 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				case "H", key.NameLeftArrow:
 					if s.lbTagIdx > 0 {
 						s.lbTagIdx--
-						s.lbTagList.ScrollTo(s.lbTagIdx)
 					} else if s.lbTagIdx == 0 {
 						s.lbTagIdx = -1
 					}
@@ -369,8 +372,11 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 					s.mu.Unlock()
 					if s.lbTagIdx < nTags-1 {
 						s.lbTagIdx++
-						s.lbTagList.ScrollTo(s.lbTagIdx)
 					}
+				case "K", key.NameUpArrow:
+					s.lbTagIdx = s.lbTagNavVertical(s.lbTagIdx, -1)
+				case "J", key.NameDownArrow:
+					s.lbTagIdx = s.lbTagNavVertical(s.lbTagIdx, +1)
 				case key.NameReturn:
 					s.mu.Lock()
 					detail := s.lbDetail
@@ -874,4 +880,63 @@ func (s *state) drawCollections(gtx layout.Context) {
 	hintLbl.Color = color.NRGBA{R: 80, G: 80, B: 80, A: 200}
 	layout.Center.Layout(hintGtx, hintLbl.Layout)
 	hintOff.Pop()
+}
+
+// lbTagNavVertical moves the tag selection up (dir=-1) or down (dir=+1)
+// within the wrapped tag grid, picking the nearest chip by x-center on the adjacent row.
+func (s *state) lbTagNavVertical(idx, dir int) int {
+	chips := s.lbTagChips
+	if len(chips) == 0 {
+		return idx
+	}
+
+	// Find current chip's row y and center x.
+	curY := -1
+	curCX := 0
+	if idx >= 0 && idx < len(chips) {
+		curY = chips[idx].y
+		curCX = chips[idx].x + chips[idx].w/2
+	} else {
+		// Nothing selected: enter from top or bottom.
+		if dir > 0 {
+			return 0
+		}
+		return len(chips) - 1
+	}
+
+	// Find the target row y.
+	targetY := -1
+	for i := range chips {
+		ry := chips[i].y
+		if dir < 0 && ry < curY && (targetY == -1 || ry > targetY) {
+			targetY = ry
+		} else if dir > 0 && ry > curY && (targetY == -1 || ry < targetY) {
+			targetY = ry
+		}
+	}
+	if targetY == -1 {
+		return idx // already at top/bottom row
+	}
+
+	// Pick chip on targetY whose center x is closest.
+	best := -1
+	bestDist := 1<<31 - 1
+	for i, c := range chips {
+		if c.y != targetY {
+			continue
+		}
+		cx := c.x + c.w/2
+		d := cx - curCX
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			bestDist = d
+			best = i
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	return idx
 }
