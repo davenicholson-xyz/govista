@@ -115,7 +115,8 @@ The script receives the cached file path as its first argument.
 | `k` / `↑`    | Move up                       |
 | `j` / `↓`    | Move down                     |
 | `Enter`       | Set selected wallpaper        |
-| `Space`       | Open lightbox for selected    |
+| `p`           | Open lightbox for selected    |
+| `o`           | Open in browser               |
 | `S` / `/`     | Open search                   |
 | `C`           | Open collections              |
 | `H`           | Sort: Hot                     |
@@ -129,6 +130,7 @@ The script receives the cached file path as its first argument.
 | Key           | Action                        |
 |---------------|-------------------------------|
 | `Enter`       | Set wallpaper                 |
+| `o`           | Open in browser               |
 | `h` / `l`    | Navigate tags                 |
 | `Esc` / `q`  | Close lightbox                |
 
