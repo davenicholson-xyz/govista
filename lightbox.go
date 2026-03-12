@@ -167,8 +167,7 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 
 	// Compute dynamic info band height.
 	fixedH := gtx.Dp(unit.Dp(12)) + // top padding
-		gtx.Dp(unit.Dp(26)) + lineGap + // row1
-		gtx.Dp(unit.Dp(20)) + lineGap + // row2
+		gtx.Dp(unit.Dp(26)) + lineGap + // row1 (resolution + meta inline)
 		gtx.Dp(unit.Dp(14)) + gtx.Dp(unit.Dp(12)) // row4 + bottom padding
 	tagSectionH := 0
 	if totalTagH > 0 {
@@ -202,31 +201,95 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 
 	y := yTop + gtx.Dp(unit.Dp(12))
 
-	// ── Row 1: resolution + ratio (left)  |  views + favorites (right) ──
+	// ── Row 1: resolution (left) + meta inline + color swatches  |  views + favorites (right) ──
 	{
+		rowH := gtx.Dp(unit.Dp(26)) // height driven by resolution text
+		subY := y + gtx.Dp(unit.Dp(5)) // vertical center for smaller text
+
+		// Resolution.
 		res := detail.Resolution
-		off := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
+		macro := op.Record(gtx.Ops)
+		tGtx := gtx
+		tGtx.Constraints = layout.Constraints{Max: image.Pt(W, rowH)}
 		resLbl := material.Label(s.theme, unit.Sp(18), res)
 		resLbl.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-		resLbl.Layout(gtx)
-		off.Pop()
+		resDims := resLbl.Layout(tGtx)
+		resCall := macro.Stop()
+		resOff := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
+		resCall.Add(gtx.Ops)
+		resOff.Pop()
 
-		if detail.Ratio != "" {
+		// Inline meta: ratio · category · purity · filetype · filesize, plain text.
+		x := pad + resDims.Size.X + gtx.Dp(unit.Dp(10))
+		drawMeta := func(text string, accent bool) {
 			macro := op.Record(gtx.Ops)
-			tGtx := gtx
-			tGtx.Constraints = layout.Constraints{Max: image.Pt(W, gtx.Dp(unit.Dp(30)))}
-			resMacroLbl := material.Label(s.theme, unit.Sp(18), res)
-			resMacroLbl.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-			resDims := resMacroLbl.Layout(tGtx)
-			macro.Stop()
-
-			ratioOff := op.Offset(image.Pt(pad+resDims.Size.X+gtx.Dp(unit.Dp(8)), y+gtx.Dp(unit.Dp(4)))).Push(gtx.Ops)
-			ratioLbl := material.Label(s.theme, unit.Sp(12), detail.Ratio)
-			ratioLbl.Color = color.NRGBA{R: 180, G: 180, B: 180, A: 150}
-			ratioLbl.Layout(gtx)
-			ratioOff.Pop()
+			mGtx := gtx
+			mGtx.Constraints = layout.Constraints{Max: image.Pt(W, rowH)}
+			lbl := material.Label(s.theme, unit.Sp(12), text)
+			if accent {
+				lbl.Color = color.NRGBA{R: 160, G: 145, B: 255, A: 230}
+			} else {
+				lbl.Color = color.NRGBA{R: 210, G: 210, B: 210, A: 200}
+			}
+			dims := lbl.Layout(mGtx)
+			call := macro.Stop()
+			off := op.Offset(image.Pt(x, subY)).Push(gtx.Ops)
+			call.Add(gtx.Ops)
+			off.Pop()
+			x += dims.Size.X + gtx.Dp(unit.Dp(10))
+		}
+		drawDot := func() {
+			macro := op.Record(gtx.Ops)
+			dGtx := gtx
+			dGtx.Constraints = layout.Constraints{Max: image.Pt(W, rowH)}
+			lbl := material.Label(s.theme, unit.Sp(12), "·")
+			lbl.Color = color.NRGBA{R: 100, G: 100, B: 100, A: 180}
+			dims := lbl.Layout(dGtx)
+			call := macro.Stop()
+			off := op.Offset(image.Pt(x, subY)).Push(gtx.Ops)
+			call.Add(gtx.Ops)
+			off.Pop()
+			x += dims.Size.X + gtx.Dp(unit.Dp(10))
 		}
 
+		if detail.Ratio != "" {
+			drawMeta(detail.Ratio, false)
+		}
+		if detail.Category != "" {
+			drawDot()
+			drawMeta(detail.Category, true)
+		}
+		if detail.Purity != "" {
+			drawDot()
+			drawMeta(detail.Purity, false)
+		}
+		if detail.FileType != "" {
+			drawDot()
+			drawMeta(strings.ToUpper(strings.TrimPrefix(detail.FileType, "image/")), false)
+		}
+		if detail.FileSize > 0 {
+			drawDot()
+			drawMeta(fmtBytes(detail.FileSize), false)
+		}
+
+		// Color swatches inline.
+		if len(detail.Colors) > 0 {
+			x += gtx.Dp(unit.Dp(4))
+			swSz := gtx.Dp(unit.Dp(11))
+			swY := subY + gtx.Dp(unit.Dp(1))
+			for _, hex := range detail.Colors {
+				c := parseHexColor(hex)
+				paint.FillShape(gtx.Ops, c,
+					clip.RRect{
+						Rect: image.Rect(x, swY, x+swSz, swY+swSz),
+						NE: 2, NW: 2, SE: 2, SW: 2,
+					}.Op(gtx.Ops),
+				)
+				x += swSz + gtx.Dp(unit.Dp(3))
+			}
+		}
+
+		// Views + favorites on the right.
 		var statParts []string
 		if detail.Views > 0 {
 			statParts = append(statParts, fmt.Sprintf("%s views", fmtCount(detail.Views)))
@@ -236,7 +299,7 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 		}
 		if len(statParts) > 0 {
 			statsText := strings.Join(statParts, "   ")
-			statsOff := op.Offset(image.Pt(0, y+gtx.Dp(unit.Dp(4)))).Push(gtx.Ops)
+			statsOff := op.Offset(image.Pt(0, subY)).Push(gtx.Ops)
 			sGtx := gtx
 			sGtx.Constraints = layout.Exact(image.Pt(W-pad, gtx.Dp(unit.Dp(20))))
 			sLbl := material.Label(s.theme, unit.Sp(12), statsText)
@@ -245,134 +308,45 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 			statsOff.Pop()
 		}
 
-		y += gtx.Dp(unit.Dp(26)) + lineGap
-	}
-
-	// ── Row 2: chips (category, purity, file type, file size) + color swatches ──
-	{
-		x := pad
-		rowH := gtx.Dp(unit.Dp(20))
-		rChipPadX := gtx.Dp(unit.Dp(7))
-		rChipPadY := gtx.Dp(unit.Dp(3))
-
-		drawChip := func(label string, accent bool) {
-			macro := op.Record(gtx.Ops)
-			tGtx := gtx
-			tGtx.Constraints = layout.Constraints{Max: image.Pt(W, rowH)}
-			lbl := material.Label(s.theme, unit.Sp(11), label)
-			if accent {
-				lbl.Color = accentColor
-			} else {
-				lbl.Color = color.NRGBA{R: 220, G: 220, B: 220, A: 220}
-			}
-			dims := lbl.Layout(tGtx)
-			call := macro.Stop()
-
-			cw := dims.Size.X + 2*rChipPadX
-			var bgColor color.NRGBA
-			if accent {
-				bgColor = color.NRGBA{R: 124, G: 106, B: 247, A: 50}
-			} else {
-				bgColor = color.NRGBA{R: 255, G: 255, B: 255, A: 18}
-			}
-			paint.FillShape(gtx.Ops, bgColor,
-				clip.RRect{
-					Rect: image.Rect(x, y, x+cw, y+rowH),
-					NE: 4, NW: 4, SE: 4, SW: 4,
-				}.Op(gtx.Ops),
-			)
-			// border
-			var borderColor color.NRGBA
-			if accent {
-				borderColor = color.NRGBA{R: 124, G: 106, B: 247, A: 120}
-			} else {
-				borderColor = color.NRGBA{R: 255, G: 255, B: 255, A: 45}
-			}
-			bw := 1
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(x, y), Max: image.Pt(x+cw, y+bw)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(x, y+rowH-bw), Max: image.Pt(x+cw, y+rowH)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(x, y), Max: image.Pt(x+bw, y+rowH)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(x+cw-bw, y), Max: image.Pt(x+cw, y+rowH)}.Op())
-
-			off := op.Offset(image.Pt(x+rChipPadX, y+rChipPadY)).Push(gtx.Ops)
-			call.Add(gtx.Ops)
-			off.Pop()
-			x += cw + gtx.Dp(unit.Dp(5))
-		}
-
-		if detail.Category != "" {
-			drawChip(detail.Category, true)
-		}
-		if detail.Purity != "" {
-			drawChip(detail.Purity, false)
-		}
-		if detail.FileType != "" {
-			ext := strings.ToUpper(strings.TrimPrefix(detail.FileType, "image/"))
-			drawChip(ext, false)
-		}
-		if detail.FileSize > 0 {
-			drawChip(fmtBytes(detail.FileSize), false)
-		}
-
-		if len(detail.Colors) > 0 {
-			x += gtx.Dp(unit.Dp(4))
-			swSz := gtx.Dp(unit.Dp(14))
-			for _, hex := range detail.Colors {
-				c := parseHexColor(hex)
-				paint.FillShape(gtx.Ops, c,
-					clip.RRect{
-						Rect: image.Rect(x, y+(rowH-swSz)/2, x+swSz, y+(rowH-swSz)/2+swSz),
-						NE: 3, NW: 3, SE: 3, SW: 3,
-					}.Op(gtx.Ops),
-				)
-				paint.FillShape(gtx.Ops,
-					color.NRGBA{R: 255, G: 255, B: 255, A: 40},
-					clip.Rect{Min: image.Pt(x, y+(rowH-swSz)/2), Max: image.Pt(x+1, y+(rowH-swSz)/2+swSz)}.Op(),
-				)
-				x += swSz + gtx.Dp(unit.Dp(4))
-			}
-		}
-
 		y += rowH + lineGap
 	}
 
-	// ── Row 3: tags (wrapped grid) ──
+	// ── Row 3: tags (wrapped grid, plain text) ──
 	if len(tagChips) > 0 {
-		chipPadY := gtx.Dp(unit.Dp(3))
+		// Store chip positions for keyboard navigation.
+		if len(s.lbTagChips) != len(tagChips) {
+			s.lbTagChips = make([]lbChipPos, len(tagChips))
+		}
+		for i, c := range tagChips {
+			s.lbTagChips[i] = lbChipPos{x: c.x, y: c.y, w: c.w}
+		}
+
 		off := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
 		for i, chip := range tagChips {
 			selected := i == s.lbTagIdx
-			var bgColor color.NRGBA
-			var borderColor color.NRGBA
 			var textColor color.NRGBA
 			if selected {
-				bgColor = color.NRGBA{R: 124, G: 106, B: 247, A: 200}
-				borderColor = color.NRGBA{R: 160, G: 145, B: 255, A: 255}
 				textColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 			} else {
-				bgColor = color.NRGBA{R: 255, G: 255, B: 255, A: 18}
-				borderColor = color.NRGBA{R: 255, G: 255, B: 255, A: 60}
-				textColor = color.NRGBA{R: 220, G: 220, B: 220, A: 220}
+				textColor = color.NRGBA{R: 180, G: 180, B: 180, A: 180}
 			}
-			paint.FillShape(gtx.Ops, bgColor,
-				clip.RRect{
-					Rect: image.Rect(chip.x, chip.y, chip.x+chip.w, chip.y+chipH),
-					NE: 3, NW: 3, SE: 3, SW: 3,
-				}.Op(gtx.Ops),
-			)
-			bw := 1
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(chip.x, chip.y), Max: image.Pt(chip.x+chip.w, chip.y+bw)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(chip.x, chip.y+chipH-bw), Max: image.Pt(chip.x+chip.w, chip.y+chipH)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(chip.x, chip.y), Max: image.Pt(chip.x+bw, chip.y+chipH)}.Op())
-			paint.FillShape(gtx.Ops, borderColor, clip.Rect{Min: image.Pt(chip.x+chip.w-bw, chip.y), Max: image.Pt(chip.x+chip.w, chip.y+chipH)}.Op())
 
-			tOff := op.Offset(image.Pt(chip.x+chipPadX, chip.y+chipPadY)).Push(gtx.Ops)
+			tOff := op.Offset(image.Pt(chip.x+chipPadX, chip.y)).Push(gtx.Ops)
 			tGtx := gtx
-			tGtx.Constraints = layout.Constraints{Max: image.Pt(chip.w-2*chipPadX, chipH)}
+			tGtx.Constraints = layout.Constraints{Max: image.Pt(chip.w, chipH)}
 			lbl := material.Label(s.theme, unit.Sp(11), chip.name)
 			lbl.Color = textColor
-			lbl.Layout(tGtx)
+			dims := lbl.Layout(tGtx)
 			tOff.Pop()
+
+			if selected {
+				ulY := chip.y + dims.Size.Y + gtx.Dp(unit.Dp(1))
+				ulX := chip.x + chipPadX
+				paint.FillShape(gtx.Ops,
+					color.NRGBA{R: 160, G: 145, B: 255, A: 220},
+					clip.Rect{Min: image.Pt(ulX, ulY), Max: image.Pt(ulX+dims.Size.X, ulY+gtx.Dp(unit.Dp(1)))}.Op(),
+				)
+			}
 		}
 		off.Pop()
 		y += totalTagH + lineGap
