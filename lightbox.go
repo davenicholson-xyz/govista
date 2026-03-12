@@ -114,7 +114,7 @@ func (s *state) drawLightbox(gtx layout.Context) {
 		imgGtx.Constraints = layout.Exact(gtx.Constraints.Max)
 		widget.Image{
 			Src:      s.lbImgOp,
-			Fit:      widget.Contain,
+			Fit:      widget.Cover,
 			Position: layout.Center,
 		}.Layout(imgGtx)
 	}
