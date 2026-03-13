@@ -27,10 +27,11 @@ type Config struct {
 
 func newDefaultConfig() Config {
 	return Config{
-		Categories: "111",
-		Purity:     "100",
-		Sorting:    "date_added",
-		ThumbSize:  200,
+		Categories:    "111",
+		Purity:        "100",
+		Sorting:       "date_added",
+		ThumbSize:     200,
+		CloseOnSelect: true,
 	}
 }
 
@@ -55,7 +56,7 @@ func loadConfig() Config {
 // parseFlags overlays CLI flags on top of the loaded config. Flags take precedence.
 func parseFlags(cfg *Config) {
 	var apiKey, username, query, categories, purity, minRes, script string
-	var closeOnSelect, output bool
+	var keepOpen, output bool
 	var thumbSize int
 
 	using := func(v string) string {
@@ -65,7 +66,7 @@ func parseFlags(cfg *Config) {
 		return ""
 	}
 
-	flag.StringVar(&apiKey, "k", "", "Wallhaven API key ("+using(cfg.APIKey)+")")
+	flag.StringVar(&apiKey, "a", "", "Wallhaven API key ("+using(cfg.APIKey)+")")
 	flag.StringVar(&apiKey, "api-key", "", "Wallhaven API key ("+using(cfg.APIKey)+")")
 	flag.StringVar(&username, "u", "", "Wallhaven username ("+using(cfg.Username)+")")
 	flag.StringVar(&username, "username", "", "Wallhaven username ("+using(cfg.Username)+")")
@@ -77,8 +78,8 @@ func parseFlags(cfg *Config) {
 	flag.StringVar(&purity, "purity", "", "Purity bitmask ("+using(cfg.Purity)+")")
 	flag.StringVar(&minRes, "r", "", "Minimum resolution e.g. 1920x1080 ("+using(cfg.MinResolution)+")")
 	flag.StringVar(&minRes, "min-resolution", "", "Minimum resolution e.g. 1920x1080 ("+using(cfg.MinResolution)+")")
-	flag.BoolVar(&closeOnSelect, "x", false, "Close window after selecting a wallpaper")
-	flag.BoolVar(&closeOnSelect, "close-on-select", false, "Close window after selecting a wallpaper")
+	flag.BoolVar(&keepOpen, "k", false, "Keep window open after selecting a wallpaper")
+	flag.BoolVar(&keepOpen, "keep-open", false, "Keep window open after selecting a wallpaper")
 	flag.BoolVar(&output, "o", false, "Print selected wallpaper path to stdout")
 	flag.BoolVar(&output, "output", false, "Print selected wallpaper path to stdout")
 	flag.IntVar(&thumbSize, "t", 0, fmt.Sprintf("Thumbnail size in dp (default %d)", cfg.ThumbSize))
@@ -128,8 +129,8 @@ func parseFlags(cfg *Config) {
 	if script != "" {
 		cfg.Script = script
 	}
-	if closeOnSelect {
-		cfg.CloseOnSelect = true
+	if keepOpen {
+		cfg.CloseOnSelect = false
 	}
 	if output {
 		cfg.Output = true

@@ -61,12 +61,6 @@
             ])}:$LD_LIBRARY_PATH"
 
             echo "GoVista dev shell ready."
-            echo "Run the following once to fetch dependencies:"
-            echo "  go get gioui.org@latest"
-            echo "  go get gioui.org/x@latest"
-            echo "  go get github.com/davenicholson-xyz/go-wallhaven@latest"
-            echo "  go get github.com/davenicholson-xyz/go-setwallpaper@latest"
-            echo "  go mod tidy"
           '';
         };
       }

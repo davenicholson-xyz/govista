@@ -61,7 +61,7 @@ purity         = "100"   # SFW | Sketchy | NSFW bitmask
 sorting        = "date_added"
 min-resolution = "1920x1080"
 thumb-size     = 200
-close-on-select = false
+close-on-select = true
 output         = false
 script         = ""
 ```
@@ -73,7 +73,7 @@ CLI flags override config file values. An API key is required to access NSFW con
 ```
 govista [flags]
 
-  -k, --api-key         Wallhaven API key
+  -a, --api-key         Wallhaven API key
   -u, --username        Wallhaven username
   -q, --query           Default search query
   -c, --categories      Category bitmask (default: 111)
@@ -82,7 +82,7 @@ govista [flags]
   -t, --thumb-size      Thumbnail size in dp (default: 200)
   -s, --script          Script to run with the wallpaper path as argument
   -o, --output          Print selected wallpaper path to stdout
-  -x, --close-on-select Close window after setting a wallpaper
+  -k, --keep-open       Keep window open after setting a wallpaper
 
   --hot / -H            Start with Hot sorting
   --top / -T            Start with Toplist sorting
@@ -107,7 +107,7 @@ Examples: `categories = "110"` (General + Anime), `purity = "110"` (SFW + Sketch
 When `--script` is set, govista runs the script instead of setting the wallpaper directly:
 
 ```sh
-govista --script ~/.local/bin/set-wallpaper --output --close-on-select
+govista --script ~/.local/bin/set-wallpaper --output
 ```
 
 The script receives the cached file path as its first argument.
