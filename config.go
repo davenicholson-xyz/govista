@@ -35,14 +35,15 @@ func newDefaultConfig() Config {
 	}
 }
 
-// loadConfig reads ~/.config/govista/config.toml, falling back to defaults.
+// loadConfig reads the platform config dir for govista/config.toml, falling back to defaults.
+// On Linux/macOS this is ~/.config/govista/config.toml; on Windows %AppData%\govista\config.toml.
 func loadConfig() Config {
 	cfg := newDefaultConfig()
-	home, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return cfg
 	}
-	path := filepath.Join(home, ".config", "govista", "config.toml")
+	path := filepath.Join(configDir, "govista", "config.toml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return cfg
