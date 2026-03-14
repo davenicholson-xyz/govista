@@ -29,14 +29,6 @@ cd govista
 go build .
 ```
 
-#### Linux/Mac
-
-Simple install script
-
-```sh
-curl -sSL https://raw.githubusercontent.com/davenicholson-xyz/govista/main/install.sh | bash
-```
-
 ### Dependencies
 
 Requires the following libraries at build time 
