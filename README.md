@@ -47,15 +47,13 @@ Create `~/.config/govista/config.toml`:
 ```toml
 api_key        = "your-wallhaven-api-key"
 username       = "your-wallhaven-username"
-query          = ""
 categories     = "111"   # General | Anime | People bitmask
 purity         = "100"   # SFW | Sketchy | NSFW bitmask
-sorting        = "date_added"
 min-resolution = "1920x1080"
 thumb-size     = 200
-close-on-select = true
 output         = false
 script         = ""
+keep-open      = false
 ```
 
 CLI flags override config file values. An API key is required to access NSFW content or private collections.
