@@ -80,6 +80,9 @@ type state struct {
 	collLoading    bool
 	collLabel      string // name of the active collection
 
+	// Help overlay.
+	helpOpen bool
+
 	// Lightbox.
 	lbOpen      bool
 	lbThumb     *Thumb
@@ -227,6 +230,9 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 	if s.lbOpen {
 		s.drawLightbox(gtx)
 	}
+	if s.helpOpen {
+		s.drawHelp(gtx)
+	}
 
 	return dims
 }
@@ -255,10 +261,9 @@ func (s *state) layoutRow(gtx layout.Context, w *app.Window, thumbs []*Thumb, ro
 
 // handleKeys reads all key events for this frame and dispatches them.
 func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
-	// Enable text-input mode (delivers key.EditEvent for typed characters).
-	if s.searchOpen {
-		key.InputHintOp{Tag: &s.kt, Hint: key.HintAny}.Add(gtx.Ops)
-	}
+	// Enable text-input mode always so key.EditEvent delivers typed characters
+	// (needed to capture ? which Gio doesn't deliver as a key.Event on Linux).
+	key.InputHintOp{Tag: &s.kt, Hint: key.HintAny}.Add(gtx.Ops)
 
 	searchJustOpened := false
 	for {
@@ -293,6 +298,7 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: "Q"},
 			// Backspace for search editing.
 			key.Filter{Focus: &s.kt, Name: key.NameDeleteBackward},
+			// Help overlay — ? is captured via key.EditEvent, not key.Event.
 		)
 		if !ok {
 			break
@@ -300,6 +306,11 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 
 		switch ev := e.(type) {
 		case key.EditEvent:
+			// Open help overlay when ? is typed (Gio doesn't deliver Shift+/ as a key.Event on Linux).
+			if ev.Text == "?" && !s.searchOpen && !s.collectOpen && !s.lbOpen && !s.helpOpen {
+				s.helpOpen = true
+				continue
+			}
 			// Typed characters — only append when search is open.
 			// Skip the first EditEvent in the frame that opened the search
 			// (the triggering key 'S' or '/' would otherwise appear in the box).
@@ -309,6 +320,14 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 
 		case key.Event:
 			if ev.State != key.Press {
+				continue
+			}
+
+			if s.helpOpen {
+				switch ev.Name {
+				case key.NameEscape, "Q":
+					s.helpOpen = false
+				}
 				continue
 			}
 
@@ -413,7 +432,7 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				s.applySorting("date_added", w)
 			case ev.Name == "R" && shift:
 				s.applySorting("random", w)
-			case (ev.Name == "S" && shift) || ev.Name == "/":
+			case (ev.Name == "S" && shift) || (ev.Name == "/" && !shift):
 				s.searchOpen = true
 				s.searchText = ""
 				searchJustOpened = true
@@ -934,4 +953,197 @@ func (s *state) lbTagNavVertical(idx, dir int) int {
 		return best
 	}
 	return idx
+}
+
+// drawHelp renders the keyboard shortcuts overlay.
+func (s *state) drawHelp(gtx layout.Context) {
+	// Semi-transparent backdrop.
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 160},
+		clip.Rect{Max: gtx.Constraints.Max}.Op(),
+	)
+
+	type entry struct{ key, desc string }
+	type section struct {
+		title   string
+		entries []entry
+	}
+
+	leftSections := []section{
+		{
+			"NAVIGATION",
+			[]entry{
+				{"h/j/k/l  ·  arrows", "Move selection"},
+			},
+		},
+		{
+			"ACTIONS",
+			[]entry{
+				{"Enter", "Set as wallpaper"},
+				{"p", "Preview (lightbox)"},
+				{"o", "Open in browser"},
+				{"s  ·  /", "Search"},
+				{"Shift+C", "Collections"},
+				{"q  ·  Esc", "Quit"},
+			},
+		},
+		{
+			"SORTING",
+			[]entry{
+				{"Shift+H", "Hot"},
+				{"Shift+T", "Toplist"},
+				{"Shift+L", "Latest"},
+				{"Shift+R", "Random"},
+			},
+		},
+	}
+
+	rightSections := []section{
+		{
+			"LIGHTBOX",
+			[]entry{
+				{"h/l  ·  arrows", "Navigate tags"},
+				{"j/k  ·  arrows", "Prev / next row"},
+				{"Enter", "Set wallpaper or search tag"},
+				{"o", "Open in browser"},
+				{"p  ·  Esc", "Close"},
+			},
+		},
+		{
+			"SEARCH",
+			[]entry{
+				{"Enter", "Submit search"},
+				{"Esc", "Cancel"},
+			},
+		},
+		{
+			"COLLECTIONS",
+			[]entry{
+				{"j/k", "Navigate"},
+				{"Enter", "Open collection"},
+				{"Esc", "Cancel"},
+			},
+		},
+	}
+
+	rowH := gtx.Dp(unit.Dp(22))
+	sectionGap := gtx.Dp(unit.Dp(12))
+	sectionHdrH := gtx.Dp(unit.Dp(24))
+	titleH := gtx.Dp(unit.Dp(34))
+	pad := gtx.Dp(unit.Dp(20))
+	colGap := gtx.Dp(unit.Dp(24))
+
+	colH := func(sects []section) int {
+		h := 0
+		for i, sec := range sects {
+			if i > 0 {
+				h += sectionGap
+			}
+			h += sectionHdrH
+			h += len(sec.entries) * rowH
+		}
+		return h
+	}
+
+	contentH := colH(leftSections)
+	if rh := colH(rightSections); rh > contentH {
+		contentH = rh
+	}
+
+	boxW := min(gtx.Dp(unit.Dp(660)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(32)))
+	colW := (boxW - pad*2 - colGap) / 2
+	boxH := pad + titleH + gtx.Dp(unit.Dp(12)) + contentH + pad
+	boxX := (gtx.Constraints.Max.X - boxW) / 2
+	boxY := (gtx.Constraints.Max.Y - boxH) / 2
+	if boxY < gtx.Dp(unit.Dp(16)) {
+		boxY = gtx.Dp(unit.Dp(16))
+	}
+
+	// Box background.
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{R: 22, G: 22, B: 28, A: 255},
+		clip.RRect{
+			Rect: image.Rect(boxX, boxY, boxX+boxW, boxY+boxH),
+			NE: 12, NW: 12, SE: 12, SW: 12,
+		}.Op(gtx.Ops),
+	)
+
+	// Accent border (1 px).
+	bw := 1
+	bc := color.NRGBA{R: 124, G: 106, B: 247, A: 180}
+	ox, oy := boxX-bw, boxY-bw
+	ow, oh := boxW+bw*2, boxH+bw*2
+	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, oy), Max: image.Pt(ox+ow, boxY)}.Op())
+	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY+boxH), Max: image.Pt(ox+ow, oy+oh)}.Op())
+	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY), Max: image.Pt(boxX, boxY+boxH)}.Op())
+	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(boxX+boxW, boxY), Max: image.Pt(ox+ow, boxY+boxH)}.Op())
+
+	// Title.
+	{
+		off := op.Offset(image.Pt(boxX+pad, boxY+pad)).Push(gtx.Ops)
+		tGtx := gtx
+		tGtx.Constraints = layout.Exact(image.Pt(boxW-2*pad, titleH))
+		lbl := material.Label(s.theme, unit.Sp(16), "Keyboard Shortcuts")
+		lbl.Color = color.NRGBA{R: 232, G: 232, B: 232, A: 255}
+		layout.W.Layout(tGtx, lbl.Layout)
+		off.Pop()
+	}
+
+	keyColor := color.NRGBA{R: 186, G: 172, B: 255, A: 255}
+	descColor := color.NRGBA{R: 150, G: 150, B: 150, A: 255}
+	hdrColor := color.NRGBA{R: 90, G: 90, B: 100, A: 255}
+
+	drawSections := func(sects []section, startX, startY int) {
+		y := startY
+		for i, sec := range sects {
+			if i > 0 {
+				y += sectionGap
+			}
+			// Section header.
+			{
+				off := op.Offset(image.Pt(startX, y)).Push(gtx.Ops)
+				tGtx := gtx
+				tGtx.Constraints = layout.Exact(image.Pt(colW, sectionHdrH))
+				lbl := material.Label(s.theme, unit.Sp(10), sec.title)
+				lbl.Color = hdrColor
+				layout.W.Layout(tGtx, lbl.Layout)
+				off.Pop()
+			}
+			y += sectionHdrH
+			// Entries.
+			keyW := colW * 2 / 5
+			for _, e := range sec.entries {
+				kOff := op.Offset(image.Pt(startX, y)).Push(gtx.Ops)
+				kGtx := gtx
+				kGtx.Constraints = layout.Exact(image.Pt(keyW, rowH))
+				kLbl := material.Label(s.theme, unit.Sp(12), e.key)
+				kLbl.Color = keyColor
+				layout.W.Layout(kGtx, kLbl.Layout)
+				kOff.Pop()
+
+				dOff := op.Offset(image.Pt(startX+keyW, y)).Push(gtx.Ops)
+				dGtx := gtx
+				dGtx.Constraints = layout.Exact(image.Pt(colW-keyW, rowH))
+				dLbl := material.Label(s.theme, unit.Sp(12), e.desc)
+				dLbl.Color = descColor
+				layout.W.Layout(dGtx, dLbl.Layout)
+				dOff.Pop()
+
+				y += rowH
+			}
+		}
+	}
+
+	contentY := boxY + pad + titleH + gtx.Dp(unit.Dp(12))
+	drawSections(leftSections, boxX+pad, contentY)
+	drawSections(rightSections, boxX+pad+colW+colGap, contentY)
+
+	// Hint below the box.
+	hintOff := op.Offset(image.Pt(boxX, boxY+boxH+gtx.Dp(unit.Dp(8)))).Push(gtx.Ops)
+	hintGtx := gtx
+	hintGtx.Constraints = layout.Exact(image.Pt(boxW, gtx.Dp(unit.Dp(20))))
+	hintLbl := material.Label(s.theme, unit.Sp(11), "?  or  Esc to close")
+	hintLbl.Color = color.NRGBA{R: 80, G: 80, B: 80, A: 200}
+	layout.Center.Layout(hintGtx, hintLbl.Layout)
+	hintOff.Pop()
 }
