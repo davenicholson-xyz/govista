@@ -278,6 +278,7 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: key.NameRightArrow},
 			key.Filter{Focus: &s.kt, Name: key.NameUpArrow},
 			key.Filter{Focus: &s.kt, Name: key.NameDownArrow},
+			key.Filter{Focus: &s.kt, Name: key.NameSpace},
 			// Sorting — Shift variants.
 			key.Filter{Focus: &s.kt, Name: "H", Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: "L", Required: key.ModShift},
@@ -465,6 +466,8 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				s.navigate(0, -1)
 			case ev.Name == "J" || ev.Name == key.NameDownArrow:
 				s.navigate(0, 1)
+			case ev.Name == key.NameSpace:
+				s.pageDown()
 			}
 		}
 	}
@@ -515,6 +518,34 @@ func (s *state) navigate(dx, dy int) {
 		s.list.Position.Offset = 0
 		s.list.Position.BeforeEnd = true
 	}
+}
+
+// pageDown scrolls the grid by one full page (the number of currently visible
+// rows) and moves the selection to the first cell of the new page.
+func (s *state) pageDown() {
+	s.mu.Lock()
+	n := len(s.thumbs)
+	s.mu.Unlock()
+	if n == 0 {
+		return
+	}
+	cols := s.cols
+	if cols < 1 {
+		cols = 1
+	}
+	pageRows := s.list.Position.Count
+	if pageRows < 1 {
+		pageRows = 1
+	}
+	if s.selected < 0 {
+		s.selected = 0
+	}
+	newIdx := s.selected + pageRows*cols
+	if newIdx >= n {
+		newIdx = n - 1
+	}
+	s.selected = newIdx
+	s.list.ScrollTo(newIdx / cols)
 }
 
 // activateSelected downloads and sets the wallpaper for the selected cell.
