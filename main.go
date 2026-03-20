@@ -726,36 +726,36 @@ func (s *state) drawStatus(gtx layout.Context) {
 func (s *state) drawSearch(gtx layout.Context) {
 	// Semi-transparent backdrop.
 	paint.FillShape(gtx.Ops,
-		color.NRGBA{A: 140},
+		color.NRGBA{A: 210},
 		clip.Rect{Max: gtx.Constraints.Max}.Op(),
 	)
 
-	boxW := min(gtx.Dp(unit.Dp(500)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(32)))
-	boxH := gtx.Dp(unit.Dp(50))
+	boxW := min(gtx.Dp(unit.Dp(360)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(32)))
+	boxH := gtx.Dp(unit.Dp(34))
 	boxX := (gtx.Constraints.Max.X - boxW) / 2
 	boxY := gtx.Constraints.Max.Y*2/5 - boxH/2
 
-	// Box background.
+	// White border with rounded corners.
+	bw := gtx.Dp(unit.Dp(1))
 	paint.FillShape(gtx.Ops,
-		color.NRGBA{R: 26, G: 26, B: 26, A: 255},
+		color.NRGBA{R: 255, G: 255, B: 255, A: 255},
 		clip.RRect{
-			Rect: image.Rect(boxX, boxY, boxX+boxW, boxY+boxH),
-			NE:   10, NW: 10, SE: 10, SW: 10,
+			Rect: image.Rect(boxX-bw, boxY-bw, boxX+boxW+bw, boxY+boxH+bw),
+			NE: 4, NW: 4, SE: 4, SW: 4,
 		}.Op(gtx.Ops),
 	)
 
-	// Accent border (1 px).
-	bw := 1
-	bc := color.NRGBA{R: 124, G: 106, B: 247, A: 180}
-	ox, oy := boxX-bw, boxY-bw
-	ow, oh := boxW+bw*2, boxH+bw*2
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, oy), Max: image.Pt(ox+ow, boxY)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY+boxH), Max: image.Pt(ox+ow, oy+oh)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY), Max: image.Pt(boxX, boxY+boxH)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(boxX+boxW, boxY), Max: image.Pt(ox+ow, boxY+boxH)}.Op())
+	// Box background — pure black.
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 255},
+		clip.RRect{
+			Rect: image.Rect(boxX, boxY, boxX+boxW, boxY+boxH),
+			NE: 4, NW: 4, SE: 4, SW: 4,
+		}.Op(gtx.Ops),
+	)
 
 	// Search text + cursor, or placeholder.
-	textPad := gtx.Dp(unit.Dp(16))
+	textPad := gtx.Dp(unit.Dp(10))
 	off := op.Offset(image.Pt(boxX+textPad, boxY)).Push(gtx.Ops)
 	textGtx := gtx
 	textGtx.Constraints = layout.Exact(image.Pt(boxW-2*textPad, boxH))
@@ -767,19 +767,25 @@ func (s *state) drawSearch(gtx layout.Context) {
 		textColor = color.NRGBA{R: 100, G: 100, B: 100, A: 255}
 	} else {
 		displayText = s.searchText + "│"
-		textColor = color.NRGBA{R: 232, G: 232, B: 232, A: 255}
+		textColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 	}
-	lbl := material.Label(s.theme, unit.Sp(15), displayText)
+	lbl := material.Label(s.theme, unit.Sp(12), displayText)
 	lbl.Color = textColor
 	layout.Center.Layout(textGtx, lbl.Layout)
 	off.Pop()
 
 	// Hint text below the box.
-	hintOff := op.Offset(image.Pt(boxX, boxY+boxH+gtx.Dp(unit.Dp(10)))).Push(gtx.Ops)
+	hintY := boxY + boxH + gtx.Dp(unit.Dp(8))
+	hintH := gtx.Dp(unit.Dp(20))
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 200},
+		clip.Rect{Min: image.Pt(boxX, hintY), Max: image.Pt(boxX+boxW, hintY+hintH)}.Op(),
+	)
+	hintOff := op.Offset(image.Pt(boxX, hintY)).Push(gtx.Ops)
 	hintGtx := gtx
-	hintGtx.Constraints = layout.Exact(image.Pt(boxW, gtx.Dp(unit.Dp(20))))
-	hintLbl := material.Label(s.theme, unit.Sp(11), "Enter to search  ·  Esc to cancel")
-	hintLbl.Color = color.NRGBA{R: 80, G: 80, B: 80, A: 200}
+	hintGtx.Constraints = layout.Exact(image.Pt(boxW, hintH))
+	hintLbl := material.Label(s.theme, unit.Sp(10), "Enter to search  ·  Esc to cancel")
+	hintLbl.Color = color.NRGBA{R: 180, G: 180, B: 180, A: 255}
 	layout.Center.Layout(hintGtx, hintLbl.Layout)
 	hintOff.Pop()
 }
@@ -837,7 +843,7 @@ func (s *state) applyCollection(coll wh.Collection, w *app.Window) {
 func (s *state) drawCollections(gtx layout.Context) {
 	// Semi-transparent backdrop.
 	paint.FillShape(gtx.Ops,
-		color.NRGBA{A: 140},
+		color.NRGBA{A: 210},
 		clip.Rect{Max: gtx.Constraints.Max}.Op(),
 	)
 
@@ -847,32 +853,32 @@ func (s *state) drawCollections(gtx layout.Context) {
 	loading := s.collLoading
 	s.mu.Unlock()
 
-	rowH := gtx.Dp(unit.Dp(38))
-	boxW := min(gtx.Dp(unit.Dp(500)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(32)))
+	rowH := gtx.Dp(unit.Dp(24))
+	boxW := min(gtx.Dp(unit.Dp(360)), gtx.Constraints.Max.X-gtx.Dp(unit.Dp(32)))
 	boxH := rowH * max(len(colls), 1)
 	boxX := (gtx.Constraints.Max.X - boxW) / 2
 	boxY := gtx.Constraints.Max.Y*2/5 - boxH/2
 
-	// Box background.
+	// White border with rounded corners.
+	bw := gtx.Dp(unit.Dp(1))
 	paint.FillShape(gtx.Ops,
-		color.NRGBA{R: 26, G: 26, B: 26, A: 255},
+		color.NRGBA{R: 255, G: 255, B: 255, A: 255},
 		clip.RRect{
-			Rect: image.Rect(boxX, boxY, boxX+boxW, boxY+boxH),
-			NE:   10, NW: 10, SE: 10, SW: 10,
+			Rect: image.Rect(boxX-bw, boxY-bw, boxX+boxW+bw, boxY+boxH+bw),
+			NE: 4, NW: 4, SE: 4, SW: 4,
 		}.Op(gtx.Ops),
 	)
 
-	// Accent border (1 px).
-	bw := 1
-	bc := color.NRGBA{R: 124, G: 106, B: 247, A: 180}
-	ox, oy := boxX-bw, boxY-bw
-	ow, oh := boxW+bw*2, boxH+bw*2
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, oy), Max: image.Pt(ox+ow, boxY)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY+boxH), Max: image.Pt(ox+ow, oy+oh)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(ox, boxY), Max: image.Pt(boxX, boxY+boxH)}.Op())
-	paint.FillShape(gtx.Ops, bc, clip.Rect{Min: image.Pt(boxX+boxW, boxY), Max: image.Pt(ox+ow, boxY+boxH)}.Op())
+	// Box background — pure black.
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 255},
+		clip.RRect{
+			Rect: image.Rect(boxX, boxY, boxX+boxW, boxY+boxH),
+			NE: 4, NW: 4, SE: 4, SW: 4,
+		}.Op(gtx.Ops),
+	)
 
-	textPad := gtx.Dp(unit.Dp(16))
+	textPad := gtx.Dp(unit.Dp(10))
 
 	if loading || len(colls) == 0 {
 		msg := "Loading collections…"
@@ -882,7 +888,7 @@ func (s *state) drawCollections(gtx layout.Context) {
 		off := op.Offset(image.Pt(boxX+textPad, boxY)).Push(gtx.Ops)
 		tGtx := gtx
 		tGtx.Constraints = layout.Exact(image.Pt(boxW-2*textPad, rowH))
-		lbl := material.Label(s.theme, unit.Sp(14), msg)
+		lbl := material.Label(s.theme, unit.Sp(12), msg)
 		lbl.Color = color.NRGBA{R: 100, G: 100, B: 100, A: 255}
 		layout.W.Layout(tGtx, lbl.Layout)
 		off.Pop()
@@ -892,25 +898,25 @@ func (s *state) drawCollections(gtx layout.Context) {
 			// Highlight selected row.
 			if i == collSel {
 				paint.FillShape(gtx.Ops,
-					color.NRGBA{R: 124, G: 106, B: 247, A: 40},
+					color.NRGBA{R: 255, G: 255, B: 255, A: 30},
 					clip.Rect{Min: image.Pt(boxX, y), Max: image.Pt(boxX+boxW, y+rowH)}.Op(),
 				)
 				// Left accent bar.
 				paint.FillShape(gtx.Ops,
-					accentColor,
-					clip.Rect{Min: image.Pt(boxX, y), Max: image.Pt(boxX+gtx.Dp(unit.Dp(3)), y+rowH)}.Op(),
+					color.NRGBA{R: 255, G: 255, B: 255, A: 200},
+					clip.Rect{Min: image.Pt(boxX, y), Max: image.Pt(boxX+gtx.Dp(unit.Dp(2)), y+rowH)}.Op(),
 				)
 			}
-			off := op.Offset(image.Pt(boxX+textPad, y)).Push(gtx.Ops)
+			off := op.Offset(image.Pt(boxX+textPad, y+gtx.Dp(unit.Dp(4)))).Push(gtx.Ops)
 			tGtx := gtx
 			tGtx.Constraints = layout.Exact(image.Pt(boxW-2*textPad, rowH))
 
 			label := fmt.Sprintf("%s  (%d)", coll.Label, coll.Count)
-			textColor := color.NRGBA{R: 180, G: 180, B: 180, A: 255}
+			textColor := color.NRGBA{R: 150, G: 150, B: 150, A: 255}
 			if i == collSel {
-				textColor = color.NRGBA{R: 232, G: 232, B: 232, A: 255}
+				textColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 			}
-			lbl := material.Label(s.theme, unit.Sp(14), label)
+			lbl := material.Label(s.theme, unit.Sp(12), label)
 			lbl.Color = textColor
 			layout.W.Layout(tGtx, lbl.Layout)
 			off.Pop()
@@ -918,11 +924,17 @@ func (s *state) drawCollections(gtx layout.Context) {
 	}
 
 	// Hint text below the box.
-	hintOff := op.Offset(image.Pt(boxX, boxY+boxH+gtx.Dp(unit.Dp(10)))).Push(gtx.Ops)
+	hintY := boxY + boxH + gtx.Dp(unit.Dp(8))
+	hintH := gtx.Dp(unit.Dp(20))
+	paint.FillShape(gtx.Ops,
+		color.NRGBA{A: 200},
+		clip.Rect{Min: image.Pt(boxX, hintY), Max: image.Pt(boxX+boxW, hintY+hintH)}.Op(),
+	)
+	hintOff := op.Offset(image.Pt(boxX, hintY)).Push(gtx.Ops)
 	hintGtx := gtx
-	hintGtx.Constraints = layout.Exact(image.Pt(boxW, gtx.Dp(unit.Dp(20))))
-	hintLbl := material.Label(s.theme, unit.Sp(11), "j/k to navigate  ·  Enter to open  ·  Esc to cancel")
-	hintLbl.Color = color.NRGBA{R: 80, G: 80, B: 80, A: 200}
+	hintGtx.Constraints = layout.Exact(image.Pt(boxW, hintH))
+	hintLbl := material.Label(s.theme, unit.Sp(10), "j/k to navigate  ·  Enter to open  ·  Esc to cancel")
+	hintLbl.Color = color.NRGBA{R: 180, G: 180, B: 180, A: 255}
 	layout.Center.Layout(hintGtx, hintLbl.Layout)
 	hintOff.Pop()
 }

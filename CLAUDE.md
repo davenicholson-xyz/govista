@@ -59,3 +59,29 @@ Defaults → `config.toml` file → CLI flags (highest priority). The resolved c
 - **Async with fade-in:** Images load in goroutines; cells animate opacity from 0→1 on first render
 - **Caching:** Full-res images are cached to disk by wallpaper ID; thumbnails are fetched from Wallhaven CDN URLs
 - **Modals:** Search, collections, lightbox, and help are rendered as overlay layers on top of the grid, toggled via boolean flags on `state`
+
+### Wallpaper Setting
+
+On `Enter`, `downloadAndSet` in `wallhaven.go` downloads the full-res image to `~/.cache/govista/<id>.<ext>`. If `Config.Script` is set, it runs the script with the file path as argument; otherwise it calls the `go-setwallpaper` library directly. `Config.Output` prints the path to stdout; `Config.CloseOnSelect` (default true) exits the app.
+
+### Key Bindings
+
+| Key | Context | Action |
+|-----|---------|--------|
+| `h/j/k/l` or arrows | Grid | Move selection |
+| `Enter` | Grid | Set as wallpaper |
+| `p` | Grid | Open lightbox |
+| `o` | Grid / lightbox | Open in browser |
+| `s` or `/` | Grid | Open search |
+| `Shift+C` | Grid | Open collections |
+| `Shift+H/T/L/R` | Grid | Switch sorting (Hot/Toplist/Latest/Random) |
+| `Space` | Grid | Scroll page |
+| `?` | Grid | Toggle help overlay |
+| `q` or `Esc` | Any | Quit / close overlay |
+| `h/l` or arrows | Lightbox | Navigate tags horizontally |
+| `j/k` or arrows | Lightbox | Navigate tags vertically |
+| `Enter` | Lightbox | Set wallpaper (no tag) or search by tag |
+
+### Config Bitmasks
+
+`categories` and `purity` use 3-character bitmask strings. Categories: position 1=General, 2=Anime, 3=People (e.g. `"111"` = all). Purity: position 1=SFW, 2=Sketchy, 3=NSFW (e.g. `"100"` = SFW only; NSFW requires API key).
