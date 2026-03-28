@@ -295,6 +295,7 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: "O"},
 			// Universal actions.
 			key.Filter{Focus: &s.kt, Name: key.NameReturn},
+			key.Filter{Focus: &s.kt, Name: key.NameReturn, Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: key.NameEscape},
 			key.Filter{Focus: &s.kt, Name: "Q"},
 			// Backspace for search editing.
@@ -398,10 +399,11 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				case "J", key.NameDownArrow:
 					s.lbTagIdx = s.lbTagNavVertical(s.lbTagIdx, +1)
 				case key.NameReturn:
+					shift := ev.Modifiers.Contain(key.ModShift)
 					s.mu.Lock()
 					detail := s.lbDetail
 					s.mu.Unlock()
-					if detail != nil && s.lbTagIdx >= 0 && s.lbTagIdx < len(detail.Tags) {
+					if !shift && detail != nil && s.lbTagIdx >= 0 && s.lbTagIdx < len(detail.Tags) {
 						tagName := detail.Tags[s.lbTagIdx].Name
 						s.lbOpen = false
 						s.lbTagIdx = -1
@@ -409,7 +411,11 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 					} else if s.lbThumb != nil {
 						t := s.lbThumb
 						s.lbOpen = false
-						t.startDownload(w)
+						if shift {
+							t.startDownloadNoClose(w)
+						} else {
+							t.startDownload(w)
+						}
 					}
 				case "O":
 					if s.lbThumb != nil {
@@ -456,6 +462,13 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				}
 			case ev.Name == "Q" || ev.Name == key.NameEscape:
 				w.Perform(system.ActionClose)
+			case ev.Name == key.NameReturn && ev.Modifiers.Contain(key.ModShift):
+				s.mu.Lock()
+				thumbs := s.thumbs
+				s.mu.Unlock()
+				if s.selected >= 0 && s.selected < len(thumbs) {
+					thumbs[s.selected].startDownloadNoClose(w)
+				}
 			case ev.Name == key.NameReturn:
 				s.activateSelected(w)
 			case ev.Name == "H" || ev.Name == key.NameLeftArrow:
@@ -1023,6 +1036,7 @@ func (s *state) drawHelp(gtx layout.Context) {
 			"ACTIONS",
 			[]entry{
 				{"Enter", "Set as wallpaper"},
+			{"Shift+Enter", "Set wallpaper (keep open)"},
 				{"p", "Preview (lightbox)"},
 				{"o", "Open in browser"},
 				{"s  ·  /", "Search"},
@@ -1048,6 +1062,7 @@ func (s *state) drawHelp(gtx layout.Context) {
 				{"h/l  ·  arrows", "Navigate tags"},
 				{"j/k  ·  arrows", "Prev / next row"},
 				{"Enter", "Set wallpaper or search tag"},
+				{"Shift+Enter", "Set wallpaper (keep open)"},
 				{"o", "Open in browser"},
 				{"p  ·  Esc", "Close"},
 			},

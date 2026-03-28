@@ -84,6 +84,26 @@ func (t *Thumb) startDownload(w *app.Window) {
 	}()
 }
 
+// startDownloadNoClose is like startDownload but always keeps the app open,
+// regardless of the CloseOnSelect config setting.
+func (t *Thumb) startDownloadNoClose(w *app.Window) {
+	t.mu.Lock()
+	t.downloading = true
+	t.mu.Unlock()
+	w.Invalidate()
+	id, url, cfg := t.ID, t.FullURL, t.cfg
+	cfg.CloseOnSelect = false
+	go func() {
+		if err := downloadAndSet(id, url, cfg, w); err != nil {
+			log.Println("govista: set wallpaper:", err)
+		}
+		t.mu.Lock()
+		t.downloading = false
+		t.mu.Unlock()
+		w.Invalidate()
+	}()
+}
+
 // layout renders the thumbnail cell, handles clicks, and shows selection state.
 func (t *Thumb) layout(gtx layout.Context, w *app.Window, selected bool) layout.Dimensions {
 	// Clicked must be called BEFORE Layout: Layout drains the gesture event
