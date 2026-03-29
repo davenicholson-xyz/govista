@@ -123,7 +123,8 @@ func run(w *app.Window) error {
 	}
 
 	s := &state{
-		list:      layout.List{Axis: layout.Vertical},
+		list:        layout.List{Axis: layout.Vertical},
+		historyList: layout.List{Axis: layout.Vertical},
 		cfg:       cfg,
 		sorting:   sorting,
 		seed:      seed,
@@ -724,6 +725,7 @@ func (s *state) openHistory(w *app.Window) {
 
 	s.historyThumbs = thumbs
 	s.historySelected = -1
+	s.historyList = layout.List{Axis: layout.Vertical}
 	s.historyOpen = true
 
 	// Kick off thumbnail loads — all should hit the disk cache instantly.
