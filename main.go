@@ -246,6 +246,9 @@ func (s *state) layoutRow(gtx layout.Context, w *app.Window, thumbs []*Thumb, ro
 			sel := idx == s.selected
 			children[c] = layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				return layout.UniformInset(unit.Dp(2)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					if t.RightClicked(gtx) {
+						s.openLightbox(t, w)
+					}
 					return t.layout(gtx, w, sel)
 				})
 			})

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/io/event"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -39,7 +41,8 @@ type Thumb struct {
 	imgOp      paint.ImageOp
 	imgOpReady bool
 
-	click widget.Clickable
+	click      widget.Clickable
+	rightTag   struct{} // tag for right-click pointer events
 }
 
 // load fetches the thumbnail image in a background goroutine and signals the
@@ -104,6 +107,29 @@ func (t *Thumb) startDownloadNoClose(w *app.Window) {
 	}()
 }
 
+// RightClicked returns true if a right-click (secondary button press) was
+// received on this thumbnail this frame. Must be called before layout.
+func (t *Thumb) RightClicked(gtx layout.Context) bool {
+	clicked := false
+	for {
+		ev, ok := gtx.Source.Event(pointer.Filter{
+			Target: &t.rightTag,
+			Kinds:  pointer.Press,
+		})
+		if !ok {
+			break
+		}
+		e, ok := ev.(pointer.Event)
+		if !ok {
+			continue
+		}
+		if e.Buttons.Contain(pointer.ButtonSecondary) {
+			clicked = true
+		}
+	}
+	return clicked
+}
+
 // layout renders the thumbnail cell, handles clicks, and shows selection state.
 func (t *Thumb) layout(gtx layout.Context, w *app.Window, selected bool) layout.Dimensions {
 	// Clicked must be called BEFORE Layout: Layout drains the gesture event
@@ -153,6 +179,7 @@ func (t *Thumb) draw(gtx layout.Context, selected bool) layout.Dimensions {
 		Rect: image.Rectangle{Min: image.Pt(bw, bw), Max: image.Pt(sz.X-bw, sz.Y-bw)},
 		NE: cr, NW: cr, SE: cr, SW: cr,
 	}.Push(gtx.Ops).Pop()
+	event.Op(gtx.Ops, &t.rightTag)
 
 	// 1. Placeholder background.
 	paint.FillShape(gtx.Ops, placeholderColor, clip.Rect{Max: sz}.Op())
