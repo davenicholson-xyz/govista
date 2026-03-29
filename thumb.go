@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -45,16 +49,46 @@ type Thumb struct {
 	rightTag   struct{} // tag for right-click pointer events
 }
 
-// load fetches the thumbnail image in a background goroutine and signals the
-// window to redraw when done.
+// load fetches the thumbnail image, using the disk cache when available.
+// On a cache miss it fetches from the network, updates the UI immediately,
+// then writes the raw bytes to disk so the next run is instant.
 func (t *Thumb) load(w *app.Window) {
+	ext := filepath.Ext(t.ThumbURL)
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	// Cache hit: read from disk and decode — no network needed.
+	if dir, err := thumbCacheDir(); err == nil {
+		cachePath := filepath.Join(dir, t.ID+ext)
+		if data, err := os.ReadFile(cachePath); err == nil {
+			if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+				t.mu.Lock()
+				t.img = img
+				t.loaded = true
+				t.loadedAt = time.Now()
+				t.mu.Unlock()
+				w.Invalidate()
+				return
+			}
+			// Corrupt cache file — remove it so we re-fetch below.
+			os.Remove(cachePath)
+		}
+	}
+
+	// Cache miss: fetch from network.
 	resp, err := http.Get(t.ThumbURL)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
-	img, _, err := image.Decode(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return
 	}
@@ -64,8 +98,12 @@ func (t *Thumb) load(w *app.Window) {
 	t.loaded = true
 	t.loadedAt = time.Now()
 	t.mu.Unlock()
-
 	w.Invalidate()
+
+	// Persist to disk cache for future runs.
+	if dir, err := thumbCacheDir(); err == nil {
+		_ = os.WriteFile(filepath.Join(dir, t.ID+ext), data, 0644)
+	}
 }
 
 // startDownload marks the thumb as downloading, kicks off the goroutine to
@@ -75,9 +113,9 @@ func (t *Thumb) startDownload(w *app.Window) {
 	t.downloading = true
 	t.mu.Unlock()
 	w.Invalidate()
-	id, url, cfg := t.ID, t.FullURL, t.cfg
+	id, thumbURL, url, cfg := t.ID, t.ThumbURL, t.FullURL, t.cfg
 	go func() {
-		if err := downloadAndSet(id, url, cfg, w); err != nil {
+		if err := downloadAndSet(id, thumbURL, url, cfg, w); err != nil {
 			log.Println("govista: set wallpaper:", err)
 		}
 		t.mu.Lock()
@@ -94,10 +132,10 @@ func (t *Thumb) startDownloadNoClose(w *app.Window) {
 	t.downloading = true
 	t.mu.Unlock()
 	w.Invalidate()
-	id, url, cfg := t.ID, t.FullURL, t.cfg
+	id, thumbURL, url, cfg := t.ID, t.ThumbURL, t.FullURL, t.cfg
 	cfg.CloseOnSelect = false
 	go func() {
-		if err := downloadAndSet(id, url, cfg, w); err != nil {
+		if err := downloadAndSet(id, thumbURL, url, cfg, w); err != nil {
 			log.Println("govista: set wallpaper:", err)
 		}
 		t.mu.Lock()

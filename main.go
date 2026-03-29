@@ -83,6 +83,12 @@ type state struct {
 	// Help overlay.
 	helpOpen bool
 
+	// History view.
+	historyOpen     bool
+	historyThumbs   []*Thumb
+	historyList     layout.List
+	historySelected int
+
 	// Lightbox.
 	lbOpen      bool
 	lbThumb     *Thumb
@@ -191,9 +197,17 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 	s.handleKeys(gtx, w)
 
 	// 4. Draw the thumbnail grid.
-	s.mu.Lock()
-	thumbs := s.thumbs
-	s.mu.Unlock()
+	var activeThumbs []*Thumb
+	var activeList *layout.List
+	if s.historyOpen {
+		activeThumbs = s.historyThumbs
+		activeList = &s.historyList
+	} else {
+		s.mu.Lock()
+		activeThumbs = s.thumbs
+		s.mu.Unlock()
+		activeList = &s.list
+	}
 
 	maxCellPx := gtx.Dp(unit.Dp(s.cfg.ThumbSize))
 	cols := gtx.Constraints.Max.X / maxCellPx
@@ -202,24 +216,34 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 	}
 	s.cols = cols // stored for keyboard navigation (same goroutine)
 
-	n := len(thumbs)
+	n := len(activeThumbs)
 	rows := (n + cols - 1) / cols
 
-	dims := s.list.Layout(gtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
-		return s.layoutRow(gtx, w, thumbs, row, cols, n)
+	dims := activeList.Layout(gtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
+		return s.layoutRow(gtx, w, activeThumbs, row, cols, n)
 	})
 
-	// 5. Trigger next page when within 3 rows of the end.
-	s.mu.Lock()
-	nearEnd := rows == 0 || s.list.Position.First+s.list.Position.Count+3 >= rows
-	canLoad := !s.loading && (s.lastPage == 0 || s.page < s.lastPage)
-	s.mu.Unlock()
-
-	if nearEnd && canLoad {
-		s.loadNextPage(w)
+	// 5. Trigger next page load (normal mode only).
+	if !s.historyOpen {
+		s.mu.Lock()
+		nearEnd := rows == 0 || s.list.Position.First+s.list.Position.Count+3 >= rows
+		canLoad := !s.loading && (s.lastPage == 0 || s.page < s.lastPage)
+		s.mu.Unlock()
+		if nearEnd && canLoad {
+			s.loadNextPage(w)
+		}
 	}
 
 	// 6. Overlays drawn on top of the grid.
+	if s.historyOpen && len(s.historyThumbs) == 0 {
+		gtx2 := gtx
+		gtx2.Constraints = layout.Exact(gtx.Constraints.Max)
+		layout.Center.Layout(gtx2, func(gtx layout.Context) layout.Dimensions {
+			lbl := material.Label(s.theme, unit.Sp(14), "No history yet — set a wallpaper to get started")
+			lbl.Color = color.NRGBA{R: 100, G: 100, B: 100, A: 255}
+			return lbl.Layout(gtx)
+		})
+	}
 	s.drawStatus(gtx)
 	if s.searchOpen {
 		s.drawSearch(gtx)
@@ -243,7 +267,11 @@ func (s *state) layoutRow(gtx layout.Context, w *app.Window, thumbs []*Thumb, ro
 		idx := row*cols + c
 		if idx < total {
 			t := thumbs[idx]
-			sel := idx == s.selected
+			activeSel := s.selected
+			if s.historyOpen {
+				activeSel = s.historySelected
+			}
+			sel := idx == activeSel
 			children[c] = layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				return layout.UniformInset(unit.Dp(2)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					if t.RightClicked(gtx) {
@@ -287,6 +315,8 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: "L", Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: "T", Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: "R", Required: key.ModShift},
+			// History toggle.
+			key.Filter{Focus: &s.kt, Name: "J", Required: key.ModShift},
 			// Search open.
 			key.Filter{Focus: &s.kt, Name: "S", Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: "/"},
@@ -434,6 +464,9 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			// Normal mode.
 			shift := ev.Modifiers.Contain(key.ModShift)
 			switch {
+			// History toggle (Shift+J).
+			case ev.Name == "J" && shift:
+				s.openHistory(w)
 			case ev.Name == "H" && shift:
 				s.applySorting("hot", w)
 			case ev.Name == "T" && shift:
@@ -448,29 +481,55 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				searchJustOpened = true
 			case ev.Name == "C" && shift:
 				s.openCollections(w)
+			// Lightbox preview — works in both modes.
 			case ev.Name == "P":
-				s.mu.Lock()
-				thumbs := s.thumbs
-				s.mu.Unlock()
-				if s.selected >= 0 && s.selected < len(thumbs) {
-					s.openLightbox(thumbs[s.selected], w)
+				var thumbs []*Thumb
+				var sel int
+				if s.historyOpen {
+					thumbs = s.historyThumbs
+					sel = s.historySelected
+				} else {
+					s.mu.Lock()
+					thumbs = s.thumbs
+					s.mu.Unlock()
+					sel = s.selected
 				}
+				if sel >= 0 && sel < len(thumbs) {
+					s.openLightbox(thumbs[sel], w)
+				}
+			// Open in browser — works in both modes.
 			case ev.Name == "O":
-				s.mu.Lock()
-				thumbs := s.thumbs
-				s.mu.Unlock()
-				if s.selected >= 0 && s.selected < len(thumbs) {
-					id := thumbs[s.selected].ID
-					go openInBrowser("https://wallhaven.cc/w/" + id)
+				var thumbs []*Thumb
+				var sel int
+				if s.historyOpen {
+					thumbs = s.historyThumbs
+					sel = s.historySelected
+				} else {
+					s.mu.Lock()
+					thumbs = s.thumbs
+					s.mu.Unlock()
+					sel = s.selected
+				}
+				if sel >= 0 && sel < len(thumbs) {
+					go openInBrowser("https://wallhaven.cc/w/" + thumbs[sel].ID)
 				}
 			case ev.Name == "Q" || ev.Name == key.NameEscape:
 				w.Perform(system.ActionClose)
-			case ev.Name == key.NameReturn && ev.Modifiers.Contain(key.ModShift):
-				s.mu.Lock()
-				thumbs := s.thumbs
-				s.mu.Unlock()
-				if s.selected >= 0 && s.selected < len(thumbs) {
-					thumbs[s.selected].startDownloadNoClose(w)
+			// Set wallpaper (keep open) — works in both modes.
+			case ev.Name == key.NameReturn && shift:
+				var thumbs []*Thumb
+				var sel int
+				if s.historyOpen {
+					thumbs = s.historyThumbs
+					sel = s.historySelected
+				} else {
+					s.mu.Lock()
+					thumbs = s.thumbs
+					s.mu.Unlock()
+					sel = s.selected
+				}
+				if sel >= 0 && sel < len(thumbs) {
+					thumbs[sel].startDownloadNoClose(w)
 				}
 			case ev.Name == key.NameReturn:
 				s.activateSelected(w)
@@ -490,11 +549,23 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 }
 
 // navigate moves the keyboard selection by (dx, dy) cells and scrolls the
-// list to keep the selected row visible.
+// list to keep the selected row visible. Works for both the main grid and
+// the history view.
 func (s *state) navigate(dx, dy int) {
-	s.mu.Lock()
-	n := len(s.thumbs)
-	s.mu.Unlock()
+	var n int
+	var selPtr *int
+	var list *layout.List
+	if s.historyOpen {
+		n = len(s.historyThumbs)
+		selPtr = &s.historySelected
+		list = &s.historyList
+	} else {
+		s.mu.Lock()
+		n = len(s.thumbs)
+		s.mu.Unlock()
+		selPtr = &s.selected
+		list = &s.list
+	}
 
 	if n == 0 {
 		return
@@ -503,13 +574,13 @@ func (s *state) navigate(dx, dy int) {
 	if cols < 1 {
 		cols = 1
 	}
-	if s.selected < 0 {
-		s.selected = 0
+	if *selPtr < 0 {
+		*selPtr = 0
 		return
 	}
 
-	row := s.selected / cols
-	col := s.selected % cols
+	row := *selPtr / cols
+	col := *selPtr % cols
 	newCol := col + dx
 	newRow := row + dy
 
@@ -520,28 +591,36 @@ func (s *state) navigate(dx, dy int) {
 	if newIdx < 0 || newIdx >= n {
 		return
 	}
-	s.selected = newIdx
+	*selPtr = newIdx
 
 	selRow := newIdx / cols
-	pos := s.list.Position
+	pos := list.Position
 	if selRow < pos.First {
-		// Row is above the viewport — snap up to it.
-		s.list.ScrollTo(selRow)
+		list.ScrollTo(selRow)
 	} else if pos.Count > 0 && pos.BeforeEnd && selRow >= pos.First+pos.Count-1 {
-		// Selection has reached the last visible row (which may be partially
-		// cut off). Scroll down by one to keep it fully visible.
-		s.list.Position.First = pos.First + 1
-		s.list.Position.Offset = 0
-		s.list.Position.BeforeEnd = true
+		list.Position.First = pos.First + 1
+		list.Position.Offset = 0
+		list.Position.BeforeEnd = true
 	}
 }
 
 // pageDown scrolls the grid by one full page (the number of currently visible
 // rows) and moves the selection to the first cell of the new page.
 func (s *state) pageDown() {
-	s.mu.Lock()
-	n := len(s.thumbs)
-	s.mu.Unlock()
+	var n int
+	var selPtr *int
+	var list *layout.List
+	if s.historyOpen {
+		n = len(s.historyThumbs)
+		selPtr = &s.historySelected
+		list = &s.historyList
+	} else {
+		s.mu.Lock()
+		n = len(s.thumbs)
+		s.mu.Unlock()
+		selPtr = &s.selected
+		list = &s.list
+	}
 	if n == 0 {
 		return
 	}
@@ -549,35 +628,43 @@ func (s *state) pageDown() {
 	if cols < 1 {
 		cols = 1
 	}
-	pageRows := s.list.Position.Count
+	pageRows := list.Position.Count
 	if pageRows < 1 {
 		pageRows = 1
 	}
-	if s.selected < 0 {
-		s.selected = 0
+	if *selPtr < 0 {
+		*selPtr = 0
 	}
-	newIdx := s.selected + pageRows*cols
+	newIdx := *selPtr + pageRows*cols
 	if newIdx >= n {
 		newIdx = n - 1
 	}
-	s.selected = newIdx
-	s.list.ScrollTo(newIdx / cols)
+	*selPtr = newIdx
+	list.ScrollTo(newIdx / cols)
 }
 
 // activateSelected downloads and sets the wallpaper for the selected cell.
 func (s *state) activateSelected(w *app.Window) {
-	s.mu.Lock()
-	thumbs := s.thumbs
-	s.mu.Unlock()
-
-	if s.selected < 0 || s.selected >= len(thumbs) {
+	var thumbs []*Thumb
+	var sel int
+	if s.historyOpen {
+		thumbs = s.historyThumbs
+		sel = s.historySelected
+	} else {
+		s.mu.Lock()
+		thumbs = s.thumbs
+		s.mu.Unlock()
+		sel = s.selected
+	}
+	if sel < 0 || sel >= len(thumbs) {
 		return
 	}
-	thumbs[s.selected].startDownload(w)
+	thumbs[sel].startDownload(w)
 }
 
 // applySorting resets the gallery with a new sort mode.
 func (s *state) applySorting(sorting string, w *app.Window) {
+	s.historyOpen = false
 	seed := ""
 	if sorting == "random" {
 		seed = newSeed()
@@ -600,6 +687,7 @@ func (s *state) applySorting(sorting string, w *app.Window) {
 
 // applySearch resets the gallery with a new search query.
 func (s *state) applySearch(query string, w *app.Window) {
+	s.historyOpen = false
 	s.mu.Lock()
 	s.sorting = "relevance"
 	s.seed = ""
@@ -613,6 +701,35 @@ func (s *state) applySearch(query string, w *app.Window) {
 	s.loading = false
 	s.mu.Unlock()
 	s.selected = -1
+	w.Invalidate()
+}
+
+// openHistory loads history entries, creates Thumb objects for them, and
+// switches to the history grid view.
+func (s *state) openHistory(w *app.Window) {
+	entries := loadHistory()
+	cfg := s.cfg
+	th := s.theme
+
+	thumbs := make([]*Thumb, len(entries))
+	for i, e := range entries {
+		thumbs[i] = &Thumb{
+			ID:       e.ID,
+			ThumbURL: e.ThumbURL,
+			FullURL:  e.FullURL,
+			cfg:      cfg,
+			theme:    th,
+		}
+	}
+
+	s.historyThumbs = thumbs
+	s.historySelected = -1
+	s.historyOpen = true
+
+	// Kick off thumbnail loads — all should hit the disk cache instantly.
+	for _, t := range thumbs {
+		go t.load(w)
+	}
 	w.Invalidate()
 }
 
@@ -684,21 +801,24 @@ func (s *state) drawStatus(gtx layout.Context) {
 	lastPage := s.lastPage
 	s.mu.Unlock()
 
-	viewLabel := sortingLabel(sorting)
-	viewSuffix := ""
-	switch sorting {
-	case "relevance":
-		if srchQ != "" {
-			viewSuffix = ": " + srchQ
+	var viewLabel, viewSuffix, pageLabel string
+	if s.historyOpen {
+		viewLabel = "history"
+	} else {
+		viewLabel = sortingLabel(sorting)
+		switch sorting {
+		case "relevance":
+			if srchQ != "" {
+				viewSuffix = ": " + srchQ
+			}
+		case "collection":
+			if collLabel != "" {
+				viewSuffix = ": " + collLabel
+			}
 		}
-	case "collection":
-		if collLabel != "" {
-			viewSuffix = ": " + collLabel
+		if page > 0 {
+			pageLabel = fmt.Sprintf(" · %d/%d", page, lastPage)
 		}
-	}
-	pageLabel := ""
-	if page > 0 {
-		pageLabel = fmt.Sprintf(" · %d/%d", page, lastPage)
 	}
 
 	gtx2 := gtx
@@ -839,6 +959,7 @@ func (s *state) openCollections(w *app.Window) {
 
 // applyCollection resets the gallery to show wallpapers from a collection.
 func (s *state) applyCollection(coll wh.Collection, w *app.Window) {
+	s.historyOpen = false
 	username := s.cfg.Username
 	s.mu.Lock()
 	s.sorting = "collection"
@@ -1044,6 +1165,7 @@ func (s *state) drawHelp(gtx layout.Context) {
 				{"o", "Open in browser"},
 				{"s  ·  /", "Search"},
 				{"Shift+C", "Collections"},
+				{"Shift+J", "History"},
 				{"q  ·  Esc", "Quit"},
 			},
 		},

@@ -140,10 +140,20 @@ func cacheDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0755)
 }
 
+// thumbCacheDir returns (and creates if needed) ~/.cache/govista/thumbs.
+func thumbCacheDir() (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "govista", "thumbs")
+	return dir, os.MkdirAll(dir, 0755)
+}
+
 // downloadAndSet downloads the full-resolution wallpaper, sets it as the
 // desktop wallpaper, and — depending on config — prints the path and/or
 // closes the window.
-func downloadAndSet(id, url string, cfg Config, w *app.Window) error {
+func downloadAndSet(id, thumbURL, url string, cfg Config, w *app.Window) error {
 	dir, err := cacheDir()
 	if err != nil {
 		return err
@@ -186,6 +196,9 @@ func downloadAndSet(id, url string, cfg Config, w *app.Window) error {
 			return err
 		}
 	}
+	// Record in history (async — don't delay the wallpaper set).
+	go appendHistoryEntry(HistoryEntry{ID: id, ThumbURL: thumbURL, FullURL: url})
+
 	if cfg.Output {
 		fmt.Println(dest)
 	}
