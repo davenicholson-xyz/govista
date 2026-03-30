@@ -159,20 +159,20 @@ func (s *state) drawLightbox(gtx layout.Context, w *app.Window) {
 	}
 	imgClickGtx := gtx
 	imgClickGtx.Constraints = layout.Exact(image.Pt(W, yTop))
-	imgPass := pointer.PassOp{}.Push(gtx.Ops)
 	s.lbImgClick.Layout(imgClickGtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{Size: image.Pt(W, yTop)}
 	})
-	imgPass.Pop()
 
 	// Info overlay at the bottom.
 	s.drawLightboxInfo(gtx, detail, w)
 
-	// Register lbCloseTag LAST so it sits on top of all other handlers.
-	// PassOp on lbImgClick/tag/footer ensures left-clicks still reach them.
+	// Register lbCloseTag LAST (topmost) with PassOp so events also flow down
+	// to lbImgClick / tag clicks / footer for left-click handling.
+	closePass := pointer.PassOp{}.Push(gtx.Ops)
 	closeArea := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
 	event.Op(gtx.Ops, &s.lbCloseTag)
 	closeArea.Pop()
+	closePass.Pop()
 }
 
 // lbComputeInfoHeight returns the pixel height of the info panel so that
@@ -437,7 +437,6 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper, w *ap
 			chipOff := op.Offset(image.Pt(chip.x, chip.y)).Push(gtx.Ops)
 			chipGtx := gtx
 			chipGtx.Constraints = layout.Exact(image.Pt(chip.w, chipH))
-			tagPass := pointer.PassOp{}.Push(gtx.Ops)
 			s.lbTagClicks[i].Layout(chipGtx, func(gtx layout.Context) layout.Dimensions {
 				var textColor color.NRGBA
 				if selected || hovered {
@@ -464,7 +463,6 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper, w *ap
 				}
 				return layout.Dimensions{Size: image.Pt(chip.w, chipH)}
 			})
-			tagPass.Pop()
 			chipOff.Pop()
 		}
 		off.Pop()
@@ -490,7 +488,6 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper, w *ap
 			off := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
 			footerGtx := gtx
 			footerGtx.Constraints = layout.Constraints{Max: image.Pt(W-2*pad, gtx.Dp(unit.Dp(14)))}
-			footerPass := pointer.PassOp{}.Push(gtx.Ops)
 			s.lbFooterClick.Layout(footerGtx, func(gtx layout.Context) layout.Dimensions {
 				lbl := material.Label(s.theme, unit.Sp(11), strings.Join(parts, " · "))
 				if s.lbFooterClick.Hovered() {
@@ -500,7 +497,6 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper, w *ap
 				}
 				return lbl.Layout(gtx)
 			})
-			footerPass.Pop()
 			off.Pop()
 		}
 	}
