@@ -95,6 +95,7 @@ type state struct {
 	lbTagIdx    int // -1 = none selected
 	lbVersion   int
 	lbTagChips  []lbChipPos // chip positions from last render, render-thread only
+	lbBlockTag  struct{}    // pointer event blocker tag
 	// Protected by mu:
 	lbDetail *wh.Wallpaper
 	lbImg    image.Image
@@ -311,6 +312,10 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 			key.Filter{Focus: &s.kt, Name: key.NameUpArrow},
 			key.Filter{Focus: &s.kt, Name: key.NameDownArrow},
 			key.Filter{Focus: &s.kt, Name: key.NameSpace},
+			// Grid sizing.
+			key.Filter{Focus: &s.kt, Name: "-"},
+			key.Filter{Focus: &s.kt, Name: "="},
+			key.Filter{Focus: &s.kt, Name: "+", Required: key.ModShift},
 			// Sorting — Shift variants.
 			key.Filter{Focus: &s.kt, Name: "H", Required: key.ModShift},
 			key.Filter{Focus: &s.kt, Name: "L", Required: key.ModShift},
@@ -534,6 +539,14 @@ func (s *state) handleKeys(gtx layout.Context, w *app.Window) {
 				}
 			case ev.Name == key.NameReturn:
 				s.activateSelected(w)
+			case ev.Name == "-":
+				if s.cfg.ThumbSize > 100 {
+					s.cfg.ThumbSize -= 20
+				}
+			case ev.Name == "=" || ev.Name == "+":
+				if s.cfg.ThumbSize < 500 {
+					s.cfg.ThumbSize += 20
+				}
 			case ev.Name == "H" || ev.Name == key.NameLeftArrow:
 				s.navigate(-1, 0)
 			case ev.Name == "L" || ev.Name == key.NameRightArrow:
@@ -1168,6 +1181,7 @@ func (s *state) drawHelp(gtx layout.Context) {
 				{"s  ·  /", "Search"},
 				{"Shift+C", "Collections"},
 				{"Shift+J", "History"},
+				{"-  ·  =", "Zoom out / in"},
 				{"q  ·  Esc", "Quit"},
 			},
 		},

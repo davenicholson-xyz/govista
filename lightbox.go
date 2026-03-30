@@ -11,6 +11,7 @@ import (
 
 	wh "github.com/davenicholson-xyz/go-wallhaven/wallhavenapi"
 	"gioui.org/app"
+	"gioui.org/io/event"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -91,6 +92,11 @@ func (s *state) openLightbox(t *Thumb, w *app.Window) {
 // drawLightbox renders the full-screen lightbox overlay:
 // the image fills the window (contain), with an info overlay at the bottom.
 func (s *state) drawLightbox(gtx layout.Context) {
+	// Block all pointer events from reaching the grid below.
+	pArea := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	event.Op(gtx.Ops, &s.lbBlockTag)
+	pArea.Pop()
+
 	// Dark backdrop.
 	paint.FillShape(gtx.Ops,
 		color.NRGBA{R: 10, G: 10, B: 10, A: 230},
