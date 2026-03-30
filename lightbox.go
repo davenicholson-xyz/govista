@@ -12,6 +12,7 @@ import (
 	wh "github.com/davenicholson-xyz/go-wallhaven/wallhavenapi"
 	"gioui.org/app"
 	"gioui.org/io/event"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -91,11 +92,25 @@ func (s *state) openLightbox(t *Thumb, w *app.Window) {
 
 // drawLightbox renders the full-screen lightbox overlay:
 // the image fills the window (contain), with an info overlay at the bottom.
-func (s *state) drawLightbox(gtx layout.Context) {
+func (s *state) drawLightbox(gtx layout.Context, w *app.Window) {
 	// Block all pointer events from reaching the grid below.
 	pArea := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
 	event.Op(gtx.Ops, &s.lbBlockTag)
 	pArea.Pop()
+
+	for {
+		ev, ok := gtx.Source.Event(pointer.Filter{
+			Target: &s.lbCloseTag,
+			Kinds:  pointer.Press,
+		})
+		if !ok {
+			break
+		}
+		if e, ok := ev.(pointer.Event); ok && e.Buttons.Contain(pointer.ButtonSecondary) {
+			s.lbOpen = false
+			s.lbTagIdx = -1
+		}
+	}
 
 	// Dark backdrop.
 	paint.FillShape(gtx.Ops,
@@ -125,12 +140,84 @@ func (s *state) drawLightbox(gtx layout.Context) {
 		}.Layout(imgGtx)
 	}
 
+	// Register a click over the image area (above the info panel) to set
+	// the wallpaper. Must be registered BEFORE the info panel's tag clicks
+	// so that tag clicks (registered later, visually on top) take priority
+	// for events in their area.
+	H := gtx.Constraints.Max.Y
+	W := gtx.Constraints.Max.X
+	infoH := s.lbComputeInfoHeight(gtx, detail)
+	yTop := H - infoH
+	if yTop < 0 {
+		yTop = 0
+	}
+	if s.lbImgClick.Clicked(gtx) && s.lbThumb != nil {
+		t := s.lbThumb
+		s.lbOpen = false
+		s.lbTagIdx = -1
+		t.startDownload(w)
+	}
+	imgClickGtx := gtx
+	imgClickGtx.Constraints = layout.Exact(image.Pt(W, yTop))
+	imgPass := pointer.PassOp{}.Push(gtx.Ops)
+	s.lbImgClick.Layout(imgClickGtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: image.Pt(W, yTop)}
+	})
+	imgPass.Pop()
+
 	// Info overlay at the bottom.
-	s.drawLightboxInfo(gtx, detail)
+	s.drawLightboxInfo(gtx, detail, w)
+
+	// Register lbCloseTag LAST so it sits on top of all other handlers.
+	// PassOp on lbImgClick/tag/footer ensures left-clicks still reach them.
+	closeArea := clip.Rect{Max: gtx.Constraints.Max}.Push(gtx.Ops)
+	event.Op(gtx.Ops, &s.lbCloseTag)
+	closeArea.Pop()
+}
+
+// lbComputeInfoHeight returns the pixel height of the info panel so that
+// the image click area can be sized to avoid overlapping the tag chips.
+func (s *state) lbComputeInfoHeight(gtx layout.Context, detail *wh.Wallpaper) int {
+	chipH := gtx.Dp(unit.Dp(22))
+	chipPadX := gtx.Dp(unit.Dp(7))
+	tagGap := gtx.Dp(unit.Dp(5))
+	tagRowGap := gtx.Dp(unit.Dp(5))
+	maxTagW := gtx.Constraints.Max.X - 2*gtx.Dp(unit.Dp(24))
+	lineGap := gtx.Dp(unit.Dp(8))
+
+	totalTagH := 0
+	if detail != nil && len(detail.Tags) > 0 {
+		cx, cy := 0, 0
+		for _, tag := range detail.Tags {
+			m := op.Record(gtx.Ops)
+			tGtx := gtx
+			tGtx.Constraints = layout.Constraints{Max: image.Pt(1 << 20, chipH)}
+			lbl := material.Label(s.theme, unit.Sp(11), tag.Name)
+			lbl.Color = color.NRGBA{}
+			dims := lbl.Layout(tGtx)
+			m.Stop() // measurement only — discard ops
+			cw := dims.Size.X + 2*chipPadX
+			if cx > 0 && cx+cw > maxTagW {
+				cx = 0
+				cy += chipH + tagRowGap
+			}
+			cx += cw + tagGap
+		}
+		totalTagH = cy + chipH
+	}
+
+	fixedH := gtx.Dp(unit.Dp(12)) +
+		gtx.Dp(unit.Dp(26)) + lineGap +
+		gtx.Dp(unit.Dp(14)) + gtx.Dp(unit.Dp(12))
+	tagSectionH := 0
+	if totalTagH > 0 {
+		tagSectionH = totalTagH + lineGap
+	}
+	return fixedH + tagSectionH
 }
 
 // drawLightboxInfo renders the info band over the bottom of the image.
-func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
+func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper, w *app.Window) {
 	W := gtx.Constraints.Max.X
 	H := gtx.Constraints.Max.Y
 	pad := gtx.Dp(unit.Dp(24))
@@ -317,8 +404,12 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 		y += rowH + lineGap
 	}
 
-	// ── Row 3: tags (wrapped grid, plain text) ──
+	// ── Row 3: tags (wrapped grid, clickable) ──
 	if len(tagChips) > 0 {
+		// Sync per-tag clickable slice when detail changes.
+		if len(s.lbTagClicks) != len(tagChips) {
+			s.lbTagClicks = make([]widget.Clickable, len(tagChips))
+		}
 		// Store chip positions for keyboard navigation.
 		if len(s.lbTagChips) != len(tagChips) {
 			s.lbTagChips = make([]lbChipPos, len(tagChips))
@@ -327,38 +418,60 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 			s.lbTagChips[i] = lbChipPos{x: c.x, y: c.y, w: c.w}
 		}
 
+		// Check tag clicks before layout (Gio pattern: Clicked before Layout).
+		for i, chip := range tagChips {
+			if s.lbTagClicks[i].Clicked(gtx) {
+				name := chip.name
+				s.lbOpen = false
+				s.lbTagIdx = -1
+				s.applySearch("#"+name, w)
+			}
+		}
+
 		off := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
 		for i, chip := range tagChips {
+			chip := chip // per-iteration capture
 			selected := i == s.lbTagIdx
-			var textColor color.NRGBA
-			if selected {
-				textColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-			} else {
-				textColor = color.NRGBA{R: 180, G: 180, B: 180, A: 180}
-			}
+			hovered := s.lbTagClicks[i].Hovered()
 
-			tOff := op.Offset(image.Pt(chip.x+chipPadX, chip.y)).Push(gtx.Ops)
-			tGtx := gtx
-			tGtx.Constraints = layout.Constraints{Max: image.Pt(chip.w, chipH)}
-			lbl := material.Label(s.theme, unit.Sp(11), chip.name)
-			lbl.Color = textColor
-			dims := lbl.Layout(tGtx)
-			tOff.Pop()
-
-			if selected {
-				ulY := chip.y + dims.Size.Y + gtx.Dp(unit.Dp(1))
-				ulX := chip.x + chipPadX
-				paint.FillShape(gtx.Ops,
-					color.NRGBA{R: 160, G: 145, B: 255, A: 220},
-					clip.Rect{Min: image.Pt(ulX, ulY), Max: image.Pt(ulX+dims.Size.X, ulY+gtx.Dp(unit.Dp(1)))}.Op(),
-				)
-			}
+			chipOff := op.Offset(image.Pt(chip.x, chip.y)).Push(gtx.Ops)
+			chipGtx := gtx
+			chipGtx.Constraints = layout.Exact(image.Pt(chip.w, chipH))
+			tagPass := pointer.PassOp{}.Push(gtx.Ops)
+			s.lbTagClicks[i].Layout(chipGtx, func(gtx layout.Context) layout.Dimensions {
+				var textColor color.NRGBA
+				if selected || hovered {
+					textColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+				} else {
+					textColor = color.NRGBA{R: 180, G: 180, B: 180, A: 180}
+				}
+				tOff := op.Offset(image.Pt(chipPadX, 0)).Push(gtx.Ops)
+				tGtx := gtx
+				tGtx.Constraints = layout.Constraints{Max: image.Pt(chip.w, chipH)}
+				lbl := material.Label(s.theme, unit.Sp(11), chip.name)
+				lbl.Color = textColor
+				dims := lbl.Layout(tGtx)
+				tOff.Pop()
+				if selected {
+					ulY := dims.Size.Y + gtx.Dp(unit.Dp(1))
+					paint.FillShape(gtx.Ops,
+						color.NRGBA{R: 160, G: 145, B: 255, A: 220},
+						clip.Rect{
+							Min: image.Pt(chipPadX, ulY),
+							Max: image.Pt(chipPadX+dims.Size.X, ulY+gtx.Dp(unit.Dp(1))),
+						}.Op(),
+					)
+				}
+				return layout.Dimensions{Size: image.Pt(chip.w, chipH)}
+			})
+			tagPass.Pop()
+			chipOff.Pop()
 		}
 		off.Pop()
 		y += totalTagH + lineGap
 	}
 
-	// ── Row 4: meta (ID · uploader · date) ──
+	// ── Row 4: meta (ID · uploader · date) — click to open in browser ──
 	{
 		var parts []string
 		if detail.ID != "" {
@@ -371,10 +484,23 @@ func (s *state) drawLightboxInfo(gtx layout.Context, detail *wh.Wallpaper) {
 			parts = append(parts, detail.CreatedAt[:10])
 		}
 		if len(parts) > 0 {
+			if s.lbFooterClick.Clicked(gtx) && s.lbThumb != nil {
+				go openInBrowser("https://wallhaven.cc/w/" + s.lbThumb.ID)
+			}
 			off := op.Offset(image.Pt(pad, y)).Push(gtx.Ops)
-			mLbl := material.Label(s.theme, unit.Sp(11), strings.Join(parts, " · "))
-			mLbl.Color = color.NRGBA{R: 130, G: 130, B: 130, A: 200}
-			mLbl.Layout(gtx)
+			footerGtx := gtx
+			footerGtx.Constraints = layout.Constraints{Max: image.Pt(W-2*pad, gtx.Dp(unit.Dp(14)))}
+			footerPass := pointer.PassOp{}.Push(gtx.Ops)
+			s.lbFooterClick.Layout(footerGtx, func(gtx layout.Context) layout.Dimensions {
+				lbl := material.Label(s.theme, unit.Sp(11), strings.Join(parts, " · "))
+				if s.lbFooterClick.Hovered() {
+					lbl.Color = color.NRGBA{R: 180, G: 180, B: 255, A: 230}
+				} else {
+					lbl.Color = color.NRGBA{R: 130, G: 130, B: 130, A: 200}
+				}
+				return lbl.Layout(gtx)
+			})
+			footerPass.Pop()
 			off.Pop()
 		}
 	}

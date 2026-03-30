@@ -23,6 +23,7 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
@@ -95,7 +96,11 @@ type state struct {
 	lbTagIdx    int // -1 = none selected
 	lbVersion   int
 	lbTagChips  []lbChipPos // chip positions from last render, render-thread only
-	lbBlockTag  struct{}    // pointer event blocker tag
+	lbBlockTag   struct{}          // pointer event blocker tag
+	lbCloseTag   struct{}          // right-click-to-close tag
+	lbImgClick   widget.Clickable  // click image area → set wallpaper
+	lbTagClicks  []widget.Clickable // one per tag chip
+	lbFooterClick widget.Clickable // click footer → open in browser
 	// Protected by mu:
 	lbDetail *wh.Wallpaper
 	lbImg    image.Image
@@ -254,7 +259,7 @@ func (s *state) layout(gtx layout.Context, w *app.Window) layout.Dimensions {
 		s.drawCollections(gtx)
 	}
 	if s.lbOpen {
-		s.drawLightbox(gtx)
+		s.drawLightbox(gtx, w)
 	}
 	if s.helpOpen {
 		s.drawHelp(gtx)
