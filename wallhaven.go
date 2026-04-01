@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"time"
 
 	wh "github.com/davenicholson-xyz/go-wallhaven/wallhavenapi"
 	"github.com/davenicholson-xyz/go-setwallpaper/wallpaper"
@@ -150,6 +153,81 @@ func thumbCacheDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0755)
 }
 
+// pruneCache removes the oldest cached files (by mtime) until total size is
+// below maxBytes. It scans both the full-res cache and the thumbs subdirectory.
+// Respects ctx so it can be interrupted when the app exits.
+// A maxBytes of 0 means unlimited — no pruning is done.
+func pruneCache(ctx context.Context, maxBytes int64) {
+	if maxBytes <= 0 {
+		return
+	}
+
+	type entry struct {
+		path  string
+		size  int64
+		mtime time.Time
+	}
+
+	fullDir, err1 := cacheDir()
+	thumbDir, err2 := thumbCacheDir()
+	if err1 != nil || err2 != nil {
+		return
+	}
+
+	var entries []entry
+	var total int64
+
+	collect := func(dir string) {
+		des, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, de := range des {
+			if de.IsDir() {
+				continue
+			}
+			if de.Name() == "history.json" {
+				continue
+			}
+			info, err := de.Info()
+			if err != nil {
+				continue
+			}
+			entries = append(entries, entry{
+				path:  filepath.Join(dir, de.Name()),
+				size:  info.Size(),
+				mtime: info.ModTime(),
+			})
+			total += info.Size()
+		}
+	}
+
+	collect(fullDir)
+	collect(thumbDir)
+
+	if total <= maxBytes {
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].mtime.Before(entries[j].mtime)
+	})
+
+	for _, e := range entries {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if total <= maxBytes {
+			break
+		}
+		if err := os.Remove(e.path); err == nil {
+			total -= e.size
+		}
+	}
+}
+
 // downloadAndSet downloads the full-resolution wallpaper, sets it as the
 // desktop wallpaper, and — depending on config — prints the path and/or
 // closes the window.
@@ -196,8 +274,9 @@ func downloadAndSet(id, thumbURL, url string, cfg Config, w *app.Window) error {
 			return err
 		}
 	}
-	// Record in history (async — don't delay the wallpaper set).
+	// Record in history and prune cache (async — don't delay the wallpaper set).
 	go appendHistoryEntry(HistoryEntry{ID: id, ThumbURL: thumbURL, FullURL: url})
+	go pruneCache(context.Background(), int64(cfg.CacheMaxMB)*1024*1024)
 
 	if cfg.Output {
 		fmt.Println(dest)

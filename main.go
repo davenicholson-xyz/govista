@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -140,6 +141,10 @@ func run(w *app.Window) error {
 		lbTagIdx: -1,
 	}
 	s.queryObj = buildQuery(cfg, sorting, cfg.Query, seed)
+
+	pruneCtx, cancelPrune := context.WithCancel(context.Background())
+	defer cancelPrune()
+	go pruneCache(pruneCtx, int64(cfg.CacheMaxMB)*1024*1024)
 
 	var ops op.Ops
 	for {

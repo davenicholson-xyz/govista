@@ -63,10 +63,13 @@ func (t *Thumb) load(w *app.Window) {
 		cachePath := filepath.Join(dir, t.ID+ext)
 		if data, err := os.ReadFile(cachePath); err == nil {
 			if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+				// Touch mtime so LRU eviction treats this as recently used.
+				now := time.Now()
+				_ = os.Chtimes(cachePath, now, now)
 				t.mu.Lock()
 				t.img = img
 				t.loaded = true
-				t.loadedAt = time.Now()
+				t.loadedAt = now
 				t.mu.Unlock()
 				w.Invalidate()
 				return

@@ -23,6 +23,7 @@ type Config struct {
 	CloseOnSelect bool   `toml:"close-on-select"`
 	Output        bool   `toml:"output"`
 	ThumbSize     int    `toml:"thumb-size"`
+	CacheMaxMB    int    `toml:"cache-max-mb"`
 }
 
 func newDefaultConfig() Config {
@@ -32,6 +33,7 @@ func newDefaultConfig() Config {
 		Sorting:       "date_added",
 		ThumbSize:     200,
 		CloseOnSelect: true,
+		CacheMaxMB:    500,
 	}
 }
 
@@ -88,6 +90,9 @@ func parseFlags(cfg *Config) {
 	flag.StringVar(&script, "s", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
 	flag.StringVar(&script, "script", "", "Script to run on selected wallpaper ("+using(cfg.Script)+")")
 
+	var cacheMaxMB int
+	flag.IntVar(&cacheMaxMB, "cache-max-mb", 0, fmt.Sprintf("Max cache size in MB, 0=unlimited (default %d)", cfg.CacheMaxMB))
+
 	var hot, top, latest, random bool
 	flag.BoolVar(&hot, "H", false, "Start with Hot sorting")
 	flag.BoolVar(&hot, "hot", false, "Start with Hot sorting")
@@ -138,6 +143,9 @@ func parseFlags(cfg *Config) {
 	}
 	if thumbSize > 0 {
 		cfg.ThumbSize = thumbSize
+	}
+	if cacheMaxMB > 0 {
+		cfg.CacheMaxMB = cacheMaxMB
 	}
 
 	switch {
