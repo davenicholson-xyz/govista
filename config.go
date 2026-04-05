@@ -18,6 +18,7 @@ type Config struct {
 	Categories    string `toml:"categories"`
 	Purity        string `toml:"purity"`
 	Sorting       string `toml:"sorting"`
+	SearchSorting string `toml:"search-sorting"`
 	MinResolution string `toml:"min-resolution"`
 	Script        string `toml:"script"`
 	CloseOnSelect bool   `toml:"close-on-select"`
@@ -31,6 +32,7 @@ func newDefaultConfig() Config {
 		Categories:    "111",
 		Purity:        "100",
 		Sorting:       "date_added",
+		SearchSorting: "relevance",
 		ThumbSize:     200,
 		CloseOnSelect: true,
 		CacheMaxMB:    500,

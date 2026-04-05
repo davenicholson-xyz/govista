@@ -712,13 +712,18 @@ func (s *state) applySorting(sorting string, w *app.Window) {
 // applySearch resets the gallery with a new search query.
 func (s *state) applySearch(query string, w *app.Window) {
 	s.historyOpen = false
+	sorting := s.cfg.SearchSorting
+	seed := ""
+	if sorting == "random" {
+		seed = newSeed()
+	}
 	s.mu.Lock()
-	s.sorting = "relevance"
-	s.seed = ""
+	s.sorting = sorting
+	s.seed = seed
 	s.srchQ = query
 	s.collLabel = ""
 	s.lbOpen = false
-	s.queryObj = buildQuery(s.cfg, "relevance", query, "")
+	s.queryObj = buildQuery(s.cfg, sorting, query, seed)
 	s.thumbs = nil
 	s.page = 0
 	s.lastPage = 0

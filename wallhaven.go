@@ -65,6 +65,8 @@ func buildQuery(cfg Config, sorting, query, seed string) *wh.Query {
 		q = q.Sort(wh.Toplist)
 	case "random":
 		q = q.Sort(wh.Random)
+	case "relevance":
+		q = q.Sort(wh.Relevance)
 	default:
 		q = q.Sort(wh.DateAdded)
 	}
