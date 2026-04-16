@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -30,7 +31,16 @@ import (
 
 var version = "version"
 
+type uaTransport struct{ base http.RoundTripper }
+
+func (t *uaTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
+	return t.base.RoundTrip(r)
+}
+
 func main() {
+	http.DefaultClient.Transport = &uaTransport{http.DefaultTransport}
 	go func() {
 		w := new(app.Window)
 		w.Option(app.Title("GoVista"))
